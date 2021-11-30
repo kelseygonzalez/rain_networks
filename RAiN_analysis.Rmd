@@ -7,24 +7,63 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+##### Define conditional installer function #####
+
+loadpackage <- function(x){
+  for(i in x){
+    #  require returns TRUE invisibly if it was able to load package
+    if( ! require(i, character.only = TRUE )){
+      #  If package was not able to be loaded then re-install
+      install.packages(i, dependencies = TRUE)
+    }
+    #  Load package (after installing)
+    library(i, character.only = TRUE)
+  }
+}
+
+
+##### Load packages #####
+
+loadpackage(c("tidyverse",
+              "extrafont"))
+
+
+##### Prepare environment #####
+
+### Load fonts ###
+loadfonts()
+
+### Read in file ###
+
+
+##### Define themes #####
+
+main_theme <- theme_light() + 
+              theme(
+                text = element_text(size = 12, family = "Merriweather Sans"),
+                plot.margin = unit(rep(1, 4), "cm"),
+                axis.title.x = element_text(margin = margin(15, 0, 0, 0)),
+                axis.title.y = element_text(margin = margin(0, 15, 0, 0))
+                )
+
+
+
+
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+### To Do
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+* Check Small stuff for angles  
+  
+* Sample descriptives: Age, race, gender, SES, ...  
+* Overall distribution of tie numbers  
+* Distrubtion of activation instances (overall, per type)  
+* Rate of match: Activation ties v. "important ties"
+* Differences in tie numbers: age, gender, race, SES  
+* Differences in activation instances: age, gender, race, SES  
+* Differences in rate of match: age, gender, race, SES  
 
-```{r cars}
-summary(cars)
-```
 
-## Including Plots
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
