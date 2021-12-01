@@ -8,25 +8,32 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
-##### Define conditional installer function #####
-
-loadpackage <- function(x){
-  for(i in x){
-    #  require returns TRUE invisibly if it was able to load package
-    if( ! require(i, character.only = TRUE )){
-      #  If package was not able to be loaded then re-install
-      install.packages(i, dependencies = TRUE)
-    }
-    #  Load package (after installing)
-    library(i, character.only = TRUE)
-  }
-}
-
-
 ##### Load packages #####
 
-loadpackage(c("tidyverse",
-              "extrafont"))
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tidyverse, glue, extrafont)
+
+
+##### Set version #####
+
+version <- 'pretest'
+# version <- 'fullsurvey'
+
+
+##### Set wd #####
+
+Paths <- c("/Users/neikos/Documents/work/Stat_code_R_RAiN networks/rain_networks/", 
+          "YOUR PATH")
+
+names(Paths) = c("neikos", "YOUR USERNAME")
+
+setwd(Paths[Sys.info()[7]])
+
+##### Load data #####
+
+# If we end up with several data files to load, we need to generalize this
+
+clean_data <- readRDS(glue("data/{list.files('data/')}"))
 
 
 ##### Prepare environment #####
@@ -36,6 +43,7 @@ loadfonts()
 
 ### Read in file ###
 
+load()
 
 ##### Define themes #####
 
@@ -44,8 +52,7 @@ main_theme <- theme_light() +
                 text = element_text(size = 12, family = "Merriweather Sans"),
                 plot.margin = unit(rep(1, 4), "cm"),
                 axis.title.x = element_text(margin = margin(15, 0, 0, 0)),
-                axis.title.y = element_text(margin = margin(0, 15, 0, 0))
-                )
+                axis.title.y = element_text(margin = margin(0, 15, 0, 0)))
 
 
 
@@ -57,13 +64,71 @@ main_theme <- theme_light() +
 
 * Check Small stuff for angles  
   
-* Sample descriptives: Age, race, gender, SES, ...  
 * Overall distribution of tie numbers  
 * Distrubtion of activation instances (overall, per type)  
 * Rate of match: Activation ties v. "important ties"
-* Differences in tie numbers: age, gender, race, SES  
+* Differences in tie numbers: age, gender, race, education, income  
 * Differences in activation instances: age, gender, race, SES  
 * Differences in rate of match: age, gender, race, SES  
+
+
+
+### Descriptive statistics
+
+```{r sample_descriptives, echo = FALSE, message = FALSE}
+
+age_descrPlot <- clean_data %>%
+  ggplot(aes(age)) +
+  geom_density() +
+  main_theme
+
+clean_data %>%
+  ggplot(aes(gender)) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  main_theme +
+  coord_flip()
+
+clean_data %>%
+  mutate(race = ifelse(hispanic == "Yes", "White Hispanic", race)) %>%
+  ggplot(aes(race)) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  main_theme +
+  coord_flip()
+
+clean_data %>%
+  ggplot(aes(educ)) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  main_theme +
+  coord_flip()
+
+clean_data %>%
+  ggplot(aes(income)) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  main_theme +
+  coord_flip()
+
+clean_data %>%
+  ggplot(aes(employment)) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  main_theme +
+  coord_flip()
+
+clean_data %>%
+  mutate(across(c(father_ed, mother_ed), as_factor, levels = c("less than high school", 
+                                                               "High school graduate",
+                                                               "Some college",
+                                                               "Associate's or Technical degree",
+                                                               "Bachelor's Ddegree",
+                                                               "Graduate or professional degree"),
+                                                  ordered = TRUE)) %>%
+  mutate(parents_educ = max(father_ed, mother_ed)) %>%
+  ggplot(aes(parents_educ)) +
+  geom_bar(aes(y = (..count..)/sum(..count..))) +
+  main_theme +
+  coord_flip()
+
+
+```
 
 
 
