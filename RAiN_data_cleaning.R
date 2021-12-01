@@ -55,23 +55,23 @@ write_csv(data, file = glue("data/qualtrics_{version}_raw_{lubridate::today()}.c
 
 
 
-if (version == 'pretest'){
-  data <- data %>% 
-    filter(ResponseId %in% 
-             c("R_21dHgG1zVDAb9ST", "R_1HesZEpvOzoXe7T", "R_3ktVKlCR6LjmU4G", "R_0Dmp1JPuNq80Lhn",
-               "R_1eLtKyts2ZAI9pj", "R_DTbHT84ZkToUlrP", "R_2BrFsGwvSswBRUV", "R_3PvkN59IDZFLqVQ",
-               "R_2EgxtjnRHWibaCb", "R_2xV4sLEgZus2FRp", "R_2OMSTVwmqJE0jlX", "R_3hu9mbrmIN4qk6i",
-               "R_O1ESR9bl4gRstFv", "R_C9Y8888annJQ4GB", "R_emvPxOYfKxu28nf", "R_3ER4SgR77vjITVj",
-               "R_2VgW1UPolN7sCCC", "R_10AvDU7LlTDOiPf", "R_3h0i11I5JDTYoKX", "R_cx6mDiOfuYdcld7")
-    )
-}
+# if (version == 'pretest'){
+#   data <- data %>% 
+#     filter(ResponseId %in% 
+#              c("R_21dHgG1zVDAb9ST", "R_1HesZEpvOzoXe7T", "R_3ktVKlCR6LjmU4G", "R_0Dmp1JPuNq80Lhn",
+#                "R_1eLtKyts2ZAI9pj", "R_DTbHT84ZkToUlrP", "R_2BrFsGwvSswBRUV", "R_3PvkN59IDZFLqVQ",
+#                "R_2EgxtjnRHWibaCb", "R_2xV4sLEgZus2FRp", "R_2OMSTVwmqJE0jlX", "R_3hu9mbrmIN4qk6i",
+#                "R_O1ESR9bl4gRstFv", "R_C9Y8888annJQ4GB", "R_emvPxOYfKxu28nf", "R_3ER4SgR77vjITVj",
+#                "R_2VgW1UPolN7sCCC", "R_10AvDU7LlTDOiPf", "R_3h0i11I5JDTYoKX", "R_cx6mDiOfuYdcld7")
+#     )
+# }
 
 
 
 # Clean Ego Data ----------------------------------------------------------
 ego <- data %>% 
   select(ResponseId, MID, StartDate:EndDate,
-         duration = `Duration (in seconds)`,RecordedDate,
+         duration = `Duration (in seconds)`, code, RecordedDate,
          Q_RecaptchaScore,consent_2,Q170:zipcode) %>% 
   # wellness came in coded strangely, clean it up
   mutate(across(wellness_1:wellness_5, ~ as.numeric(str_extract(.x, "\\d$"))))
@@ -120,13 +120,12 @@ important_people <- data %>%
 
 
 # Clean Alters ------------------------------------------------------------
-alters <-
+alters_info <-
   data %>% 
   select(ResponseId, MID,
-         emo_act_1:Inst3Name_catch3, 
-         why_emo_1_a:why_inst_3_c_11_TEXT,
+         matches("\\w{3,4}\\dName_\\d"), 
          A_gender_1:A_communication_mode_27) %>% 
-  select(-contains("catch")) %>% 
+  select(-contains("catch")) %>%
   mutate(across(A_gender_1:A_communication_mode_27, as.character)) %>% 
   # qualtrics added extra _letter at the end of age and tie type variables, this removes those.
   rename_with(~ str_remove(string = .x, patter = "_\\d+$"), 
@@ -141,7 +140,49 @@ alters <-
               names_from = "demographic_alter_question", 
               values_from = 'value',
               names_repair = 'unique') %>% 
-  rename_with(~ paste0('alter_', .x), gender:communication_mode )  %>% 
+  rename_with(~ paste0('alter_', .x), gender:communication_mode ) %>% 
+  pivot_longer(cols = matches("\\w{3,4}\\dName_\\d"),
+               names_to = c("activation_type",
+                            "activation_instance", 
+                            "alter_number_within_instance"),
+               names_pattern = "(\\w{3,4})(\\d)Name_(\\d)$",
+               values_to = "alter_name",
+               names_repair = 'unique') %>% 
+  # create an alter_key which indicates which # the alter is, 1-27
+  mutate(activation_type_num = case_when(activation_type == "emo" ~ 1,
+                                         activation_type == "Info"~ 2, 
+                                         activation_type == "Inst"~ 3),
+         across(c(activation_type_num, activation_instance, alter_number_within_instance), as.numeric), 
+         alter_key = ((activation_type_num-1)*9) + 
+           (activation_instance*(activation_instance-1))+ 
+           (alter_number_within_instance)) %>% 
+  # drop duplicates 
+  filter(alter_key == alter_number_from_demo) %>% 
+  select(ResponseId, MID, alter_name, everything(), 
+         -c(alter_number_from_demo, 
+            activation_type:alter_number_within_instance, 
+            activation_type_num, alter_key))  %>% 
+  drop_na(alter_name) %>% 
+  # there are some people who didn't follow instructions in the survey. this
+  # will collapse their multiple rows for 1 person into a list.
+  group_by(MID, ResponseId, alter_name) %>%  
+  summarize(alter_info_duplicates = n(), 
+            across(alter_gender:alter_communication_mode, list)) %>% 
+  ungroup() %>% 
+  # TODO: drop NA from the list elements 
+  mutate(across(alter_gender:alter_communication_mode, 
+                ~ ifelse(alter_info_duplicates == 1, unlist(.x), .x))) %>% 
+  # add in the count of how many unique alters there are
+  distinct() %>% 
+  add_count(MID, ResponseId, name = 'alters_unique_n')
+  
+
+
+alters_activation <- 
+  data %>% 
+  select(ResponseId, MID,
+         emo_act_1:Inst3Name_catch3, 
+         why_emo_1_a:why_inst_3_c_11_TEXT) %>% 
   # reshape activation instance examples
   pivot_longer(contains("_act_"),
                names_to = c("activation_type", "activation_instance"),
@@ -161,75 +202,29 @@ alters <-
   drop_na(activation_instance_example,alter_name) %>% 
   select(-c(activation_type_to_verify_name, activation_instance_to_verify_name)) %>% 
   # create an alter_key which indicates which # the alter is, 1-27
-  mutate(alter_key = case_when(activation_type == "emo" &  activation_instance == 1 & alter_number_within_instance == 1 ~ 1,
-                               activation_type == "emo" &  activation_instance == 1 & alter_number_within_instance == 2 ~ 2,
-                               activation_type == "emo" &  activation_instance == 1 & alter_number_within_instance == 3 ~ 3,
-                               activation_type == "emo" &  activation_instance == 2 & alter_number_within_instance == 1 ~ 4,
-                               activation_type == "emo" &  activation_instance == 2 & alter_number_within_instance == 2 ~ 5,
-                               activation_type == "emo" &  activation_instance == 2 & alter_number_within_instance == 3 ~ 6,
-                               activation_type == "emo" &  activation_instance == 3 & alter_number_within_instance == 1 ~ 7,
-                               activation_type == "emo" &  activation_instance == 3 & alter_number_within_instance == 2 ~ 8,
-                               activation_type == "emo" &  activation_instance == 3 & alter_number_within_instance == 3 ~ 9,
-                               activation_type == "Info" & activation_instance == 1 & alter_number_within_instance == 1 ~ 10,
-                               activation_type == "Info" & activation_instance == 1 & alter_number_within_instance == 2 ~ 11,
-                               activation_type == "Info" & activation_instance == 1 & alter_number_within_instance == 3 ~ 12,
-                               activation_type == "Info" & activation_instance == 2 & alter_number_within_instance == 1 ~ 13,
-                               activation_type == "Info" & activation_instance == 2 & alter_number_within_instance == 2 ~ 14,
-                               activation_type == "Info" & activation_instance == 2 & alter_number_within_instance == 3 ~ 15,
-                               activation_type == "Info" & activation_instance == 3 & alter_number_within_instance == 1 ~ 16,
-                               activation_type == "Info" & activation_instance == 3 & alter_number_within_instance == 2 ~ 17,
-                               activation_type == "Info" & activation_instance == 3 & alter_number_within_instance == 3 ~ 18,
-                               activation_type == "Inst" & activation_instance == 1 & alter_number_within_instance == 1 ~ 19,
-                               activation_type == "Inst" & activation_instance == 1 & alter_number_within_instance == 2 ~ 20,
-                               activation_type == "Inst" & activation_instance == 1 & alter_number_within_instance == 3 ~ 21,
-                               activation_type == "Inst" & activation_instance == 2 & alter_number_within_instance == 1 ~ 22,
-                               activation_type == "Inst" & activation_instance == 2 & alter_number_within_instance == 2 ~ 23,
-                               activation_type == "Inst" & activation_instance == 2 & alter_number_within_instance == 3 ~ 24,
-                               activation_type == "Inst" & activation_instance == 3 & alter_number_within_instance == 1 ~ 25,
-                               activation_type == "Inst" & activation_instance == 3 & alter_number_within_instance == 2 ~ 26,
-                               activation_type == "Inst" & activation_instance == 3 & alter_number_within_instance == 3 ~ 27),
-         alter_number_from_demo = as.numeric(alter_number_from_demo)) %>% 
-  # drop duplicates 
-  filter(alter_key == alter_number_from_demo) %>% 
-  select(-alter_number_from_demo) %>% 
-  # to get rid of the excess variables with raw text like why_emo_1_a_6_TEXT, concatenate with the non-raw version.  
-  mutate(why_emo_1_a =  ifelse(!is.na(why_emo_1_a_6_TEXT),   paste0( as.character(why_emo_1_a), ", ", why_emo_1_a_6_TEXT ), why_emo_1_a),
-         why_emo_1_b =  ifelse(!is.na(why_emo_1_b_11_TEXT),  paste0( as.character(why_emo_1_b), ", ", why_emo_1_b_11_TEXT), why_emo_1_b),
-         why_emo_1_c =  ifelse(!is.na(why_emo_1_c_11_TEXT),  paste0( as.character(why_emo_1_c), ", ", why_emo_1_c_11_TEXT), why_emo_1_c),
-         why_emo_2_a =  ifelse(!is.na(why_emo_2_a_66_TEXT),  paste0( as.character(why_emo_2_a), ", ", why_emo_2_a_66_TEXT), why_emo_2_a),
-         why_emo_2_b =  ifelse(!is.na(why_emo_2_b_11_TEXT),  paste0( as.character(why_emo_2_b), ", ", why_emo_2_b_11_TEXT), why_emo_2_b),
-         why_emo_2_c =  ifelse(!is.na(why_emo_2_c_11_TEXT),  paste0( as.character(why_emo_2_c), ", ", why_emo_2_c_11_TEXT), why_emo_2_c),
-         why_emo_3_a =  ifelse(!is.na(why_emo_3_a_11_TEXT),  paste0( as.character(why_emo_3_a), ", ", why_emo_3_a_11_TEXT), why_emo_3_a),
-         why_emo_3_b =  ifelse(!is.na(why_emo_3_b_11_TEXT),  paste0( as.character(why_emo_3_b), ", ", why_emo_3_b_11_TEXT), why_emo_3_b),
-         why_emo_3_c =  ifelse(!is.na(why_emo_3_c_11_TEXT),  paste0( as.character(why_emo_3_c), ", ", why_emo_3_c_11_TEXT), why_emo_3_c),
-         why_info_1_a = ifelse(!is.na(why_info_1_a_11_TEXT), paste0(as.character(why_info_1_a), ", ", why_info_1_a_11_TEXT), why_info_1_a),
-         why_info_1_b = ifelse(!is.na(why_info_1_b_11_TEXT), paste0(as.character(why_info_1_b), ", ", why_info_1_b_11_TEXT), why_info_1_b),
-         why_info_1_c = ifelse(!is.na(why_info_1_c_11_TEXT), paste0(as.character(why_info_1_c), ", ", why_info_1_c_11_TEXT), why_info_1_c),
-         why_info_2_a = ifelse(!is.na(why_info_2_a_11_TEXT), paste0(as.character(why_info_2_a), ", ", why_info_2_a_11_TEXT), why_info_2_a),
-         why_info_2_b = ifelse(!is.na(why_info_2_b_11_TEXT), paste0(as.character(why_info_2_b), ", ", why_info_2_b_11_TEXT), why_info_2_b),
-         why_info_2_c = ifelse(!is.na(why_info_2_c_11_TEXT), paste0(as.character(why_info_2_c), ", ", why_info_2_c_11_TEXT), why_info_2_c),
-         why_info_3_a = ifelse(!is.na(why_info_3_a_76_TEXT), paste0(as.character(why_info_3_a), ", ", why_info_3_a_76_TEXT), why_info_3_a),
-         why_info_3_b = ifelse(!is.na(why_info_3_b_11_TEXT), paste0(as.character(why_info_3_b), ", ", why_info_3_b_11_TEXT), why_info_3_b),
-         why_info_3_c = ifelse(!is.na(why_info_3_c_11_TEXT), paste0(as.character(why_info_3_c), ", ", why_info_3_c_11_TEXT), why_info_3_c),
-         why_inst_1_a = ifelse(!is.na(why_inst_1_a_66_TEXT), paste0(as.character(why_inst_1_a), ", ", why_inst_1_a_66_TEXT), why_inst_1_a),
-         why_inst_1_b = ifelse(!is.na(why_inst_1_b_11_TEXT), paste0(as.character(why_inst_1_b), ", ", why_inst_1_b_11_TEXT), why_inst_1_b),
-         why_inst_1_c = ifelse(!is.na(why_inst_1_c_11_TEXT), paste0(as.character(why_inst_1_c), ", ", why_inst_1_c_11_TEXT), why_inst_1_c),
-         why_inst_2_a = ifelse(!is.na(why_inst_2_a_11_TEXT), paste0(as.character(why_inst_2_a), ", ", why_inst_2_a_11_TEXT), why_inst_2_a),
-         why_inst_2_b = ifelse(!is.na(why_inst_2_b_57_TEXT), paste0(as.character(why_inst_2_b), ", ", why_inst_2_b_57_TEXT), why_inst_2_b),
-         why_inst_2_c = ifelse(!is.na(why_inst_2_c_11_TEXT), paste0(as.character(why_inst_2_c), ", ", why_inst_2_c_11_TEXT), why_inst_2_c),
-         why_inst_3_a = ifelse(!is.na(why_inst_3_a_11_TEXT), paste0(as.character(why_inst_3_a), ", ", why_inst_3_a_11_TEXT), why_inst_3_a),
-         why_inst_3_b = ifelse(!is.na(why_inst_3_b_12_TEXT), paste0(as.character(why_inst_3_b), ", ", why_inst_3_b_12_TEXT), why_inst_3_b),
-         why_inst_3_c = ifelse(!is.na(why_inst_3_c_11_TEXT), paste0(as.character(why_inst_3_c), ", ", why_inst_3_c_11_TEXT), why_inst_3_c)) %>% 
-  # drop the aforementioned excess raw text variables
-  select(-matches("why_\\w{3,4}_\\d_\\w_\\d+_TEXT")) %>% 
+    mutate(activation_type_num = case_when(activation_type == "emo" ~ 1,
+                                           activation_type == "Info"~ 2, 
+                                           activation_type == "Inst"~ 3),
+           across(c(activation_type_num, activation_instance, alter_number_within_instance), as.numeric), 
+           alter_key = ((activation_type_num-1)*9) + (activation_instance*(activation_instance-1))+ (alter_number_within_instance)) %>% 
+  select(-activation_type_num) %>% 
+  
   # reshape the why_ questions 
+  rename_with(~ str_replace(string = .x, patter = "_\\d{1,2}_TEXT$", "_TEXT"), 
+              .cols = matches("why_\\w{3,4}_\\d_\\w_\\d{1,2}_TEXT")) %>% 
   pivot_longer(cols = starts_with("why_"),
+               names_pattern = "why_(\\w{3,4})_(\\d)_(\\w)_?(TEXT)?",
                names_to = c("activation_type_to_verify_why",
-                            "activation_instance_to_verify_why",
-                            "alter_letter_to_verify_why"),
-               names_pattern = "why_(\\w{3,4})_(\\d)_(\\w)$",
-               values_to = "why_asked_alter",
-               names_repair = 'unique') %>%
+                            "activation_instance_to_verify_why", 
+                            "alter_letter_to_verify_why",
+                            "why_optional_text"), 
+               values_to = "why") %>% 
+  pivot_wider(id_cols = !c(why,why_optional_text),
+              names_from = "why_optional_text", 
+              names_glue = "why{why_optional_text}",
+              values_from = "why") %>% 
+  mutate(why =  ifelse(!is.na(whyTEXT), paste0(as.character(why), ", ", whyTEXT), why)) %>% 
+  select(-whyTEXT) %>% 
   mutate(alter_number_to_verify_why = case_when(alter_letter_to_verify_why == 'a' ~ 1,
                                                 alter_letter_to_verify_why == 'b' ~ 2,
                                                 alter_letter_to_verify_why == 'c' ~ 3)) %>% 
@@ -238,11 +233,48 @@ alters <-
            activation_instance == activation_instance_to_verify_why &
            alter_number_within_instance == alter_number_to_verify_why)  %>%  
   select(-c(activation_type_to_verify_why, activation_instance_to_verify_why, 
-            alter_number_to_verify_why, alter_letter_to_verify_why)) %>% 
+            alter_number_to_verify_why, alter_letter_to_verify_why))   %>% 
+  # reshape the catch questions 
+  pivot_longer(cols = contains("catch"),
+               names_to = c("activation_type_to_verify_catch",
+                            "activation_instance_to_verify_catch",
+                            "alter_number_to_verify_catch"),
+               names_pattern = "(\\w{3,4})(\\d)Name_catch(\\d)$",
+               values_to = "duplicate_catch",
+               names_repair = 'unique') %>%
+
+  # drop the duplicates from the why_questions 
+  filter(str_to_lower(activation_type) == str_to_lower(activation_type_to_verify_catch) &
+           activation_instance == activation_instance_to_verify_catch &
+           alter_number_within_instance == alter_number_to_verify_catch)  %>%  
+  select(-c(activation_type_to_verify_catch, activation_instance_to_verify_catch,
+            alter_number_to_verify_catch)) %>%
   # reorder questions for usability
   select(ResponseId,MID, alter_key, alter_name, 
          activation_type, activation_instance, alter_number_within_instance, 
-         activation_instance_example, why_asked_alter, everything()) %>% 
+         activation_instance_example, why, everything()) 
+
+
+# join alter_Activation to alter_info - these are seperated because the
+# alter_key may not perfectly match the demographics provided because they were
+# only asked about each person once.
+alters <- alters_activation %>% 
+  left_join(alters_info,
+            # trying to figure out a way to only join those that are technically
+            # duplicated (duplicate_catch = "Yes"), but the qualtrics logic
+            # doesn't really flow right with that.
+            # mutate(alters_info, duplicate_catch = "Yes"),
+            by = c("MID", "ResponseId", "alter_name"),
+            na_matches = "never") %>% 
+  
+  ### IMPORTANT TODO: something weird is happening with NULLs and I don't have
+  ### time to debug it right now. in otherwords, this data is falsely
+  ### incomplete.
+  
+  # add in the count of how many total alters
+  add_count(MID, ResponseId, name = 'alters_total_n') %>% 
+  mutate(alters_unique_n = ifelse(is.na(alters_unique_n), alters_total_n, alters_unique_n)) %>% 
+  
   # add in important people information
   left_join(filter(important_people, important_person_is_alter == "Yes"),
             by = c('ResponseId', "alter_name" = "important_alter_name", "MID")) %>% 
@@ -259,6 +291,7 @@ clean_data <- ego %>%
             # by = c("MID", "ResponseId")) %>% 
   full_join(interview,
             by = c("MID", "ResponseId")) %>% 
+  
   full_join(nest(alters, alter_data = alter_key:important_alter_type),
             by = c("MID", "ResponseId")) 
 
