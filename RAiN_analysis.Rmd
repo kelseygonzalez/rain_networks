@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ##### Load packages #####
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, glue, extrafont)
+pacman::p_load(tidyverse, glue, extrafont, cowplot)
 
 
 ##### Set version #####
@@ -41,9 +41,6 @@ clean_data <- readRDS(glue("data/{list.files('data/')}"))
 ### Load fonts ###
 loadfonts()
 
-### Read in file ###
-
-load()
 
 ##### Define themes #####
 
@@ -55,7 +52,18 @@ main_theme <- theme_light() +
                 axis.title.y = element_text(margin = margin(0, 15, 0, 0)))
 
 
+main_theme_noMargin <- theme_light() + 
+              theme(
+                text = element_text(size = 12, family = "Merriweather Sans"),
+                axis.title.x = element_text(margin = margin(15, 0, 0, 0)),
+                axis.title.y = element_text(margin = margin(0, 15, 0, 0)))
 
+
+main_theme_noMargin_smallFont <- theme_light() + 
+              theme(
+                text = element_text(size = 10, family = "Merriweather Sans"),
+                axis.title.x = element_text(margin = margin(15, 0, 0, 0)),
+                axis.title.y = element_text(margin = margin(0, 15, 0, 0)))
 
 ```
 
@@ -64,7 +72,9 @@ main_theme <- theme_light() +
 
 * Check Small stuff for angles  
   
-* Overall distribution of tie numbers  
+* Add SES of origin to demo & SES descriptives   
+* Change colors in demo & SES descriptives (by changing column type)   
+* Income descr plot: NAs are not displayed  
 * Distrubtion of activation instances (overall, per type)  
 * Rate of match: Activation ties v. "important ties"
 * Differences in tie numbers: age, gender, race, education, income  
@@ -75,60 +85,100 @@ main_theme <- theme_light() +
 
 ### Descriptive statistics
 
-```{r sample_descriptives, echo = FALSE, message = FALSE}
+## Demographics and SES
 
+```{r descriptives_demoSES, echo = FALSE, message = FALSE}
+
+# Age: desnity plot
 age_descrPlot <- clean_data %>%
   ggplot(aes(age)) +
   geom_density() +
-  main_theme
+  main_theme_noMargin_smallFont
 
-clean_data %>%
-  ggplot(aes(gender)) +
-  geom_bar(aes(y = (..count..)/sum(..count..))) +
-  main_theme +
+# Gender: Bar plot
+gender_descrPlot <- clean_data %>%
+  ggplot(aes(gender, fill = gender)) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+  main_theme_noMargin_smallFont +
   coord_flip()
 
-clean_data %>%
+# Race: Bar plot
+race_descrPlot <- clean_data %>%
   mutate(race = ifelse(hispanic == "Yes", "White Hispanic", race)) %>%
-  ggplot(aes(race)) +
-  geom_bar(aes(y = (..count..)/sum(..count..))) +
-  main_theme +
+  ggplot(aes(race, fill = race)) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+  main_theme_noMargin_smallFont +
   coord_flip()
 
-clean_data %>%
-  ggplot(aes(educ)) +
-  geom_bar(aes(y = (..count..)/sum(..count..))) +
-  main_theme +
+# Education: Bar plot
+educ_descrPlot <- clean_data %>%
+  ggplot(aes(educ, fill = educ)) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+  main_theme_noMargin_smallFont +
   coord_flip()
 
-clean_data %>%
-  ggplot(aes(income)) +
-  geom_bar(aes(y = (..count..)/sum(..count..))) +
-  main_theme +
+# Income: Bar plot
+income_descrPlot <- clean_data %>%
+  ggplot(aes(income, fill = income)) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+  main_theme_noMargin_smallFont +
   coord_flip()
 
-clean_data %>%
-  ggplot(aes(employment)) +
-  geom_bar(aes(y = (..count..)/sum(..count..))) +
-  main_theme +
+# Employment status: Bar plot
+employm_descrPlot <- clean_data %>%
+  ggplot(aes(employment, fill = employment)) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+  main_theme_noMargin_smallFont +
   coord_flip()
 
-clean_data %>%
-  mutate(across(c(father_ed, mother_ed), as_factor, levels = c("less than high school", 
-                                                               "High school graduate",
-                                                               "Some college",
-                                                               "Associate's or Technical degree",
-                                                               "Bachelor's Ddegree",
-                                                               "Graduate or professional degree"),
-                                                  ordered = TRUE)) %>%
-  mutate(parents_educ = max(father_ed, mother_ed)) %>%
-  ggplot(aes(parents_educ)) +
-  geom_bar(aes(y = (..count..)/sum(..count..))) +
-  main_theme +
-  coord_flip()
+# Parents' education: Bar plot
+# clean_data %>%
+#   mutate(across(c(father_ed, mother_ed), as_factor, levels = c("less than high school", 
+#                                                                "High school graduate",
+#                                                                "Some college",
+#                                                                "Associate's or Technical degree",
+#                                                                "Bachelor's Ddegree",
+#                                                                "Graduate or professional degree"),
+#                                                   ordered = TRUE)) %>%
+#   mutate(parents_educ = max(father_ed, mother_ed)) %>%
+#   ggplot(aes(parents_educ)) +
+#   geom_bar(aes(y = (..count..)/sum(..count..))) +
+#   main_theme +
+#   coord_flip()
+
+# Display plots
+plot_grid(
+  plotlist = list(age_descrPlot,
+                  gender_descrPlot,
+                  race_descrPlot,
+                  educ_descrPlot,
+                  income_descrPlot,
+                  employm_descrPlot),
+  ncol = 2)
 
 
 ```
+  
+  
+  
+  
+## Personal network and support activation
+  
+```{r descriptives_networks, echo = FALSE, message = FALSE}
+
+nTies_descrPlot <- map(clean_data$alter_data, count) %>% 
+  map_dfr(as_tibble, .name_repair = "universal") %>%
+  ggplot(aes(n)) +
+  geom_density() +
+  main_theme_noMargin_smallFont
+
+
+# Overall: distribution of activation instances
 
 
 
+
+# Per type: distrubtion of activation instances
+
+
+```
