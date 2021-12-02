@@ -287,8 +287,8 @@ alters <- alters_activation %>%
 clean_data <- ego %>% 
   # for now we can skip joining important people; they information we need is
   # already included in alters df
-  # full_join(y = nest(important_people, important_people = important_alter_name:important_person_is_alter),
-            # by = c("MID", "ResponseId")) %>% 
+  full_join(y = nest(important_people, important_people = important_alter_name:important_person_is_alter),
+  by = c("MID", "ResponseId")) %>%
   full_join(interview,
             by = c("MID", "ResponseId")) %>% 
   

@@ -92,44 +92,44 @@ main_theme_noMargin_smallFont <- theme_light() +
 # Age: desnity plot
 age_descrPlot <- clean_data %>%
   ggplot(aes(age)) +
-  geom_density() +
-  main_theme_noMargin_smallFont
+    geom_density() +
+    main_theme_noMargin_smallFont
 
 # Gender: Bar plot
 gender_descrPlot <- clean_data %>%
   ggplot(aes(gender, fill = gender)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
-  main_theme_noMargin_smallFont +
-  coord_flip()
+    geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    coord_flip()
 
 # Race: Bar plot
 race_descrPlot <- clean_data %>%
   mutate(race = ifelse(hispanic == "Yes", "White Hispanic", race)) %>%
   ggplot(aes(race, fill = race)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
-  main_theme_noMargin_smallFont +
-  coord_flip()
+    geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    coord_flip()
 
 # Education: Bar plot
 educ_descrPlot <- clean_data %>%
   ggplot(aes(educ, fill = educ)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
-  main_theme_noMargin_smallFont +
-  coord_flip()
+    geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    coord_flip()
 
 # Income: Bar plot
 income_descrPlot <- clean_data %>%
   ggplot(aes(income, fill = income)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
-  main_theme_noMargin_smallFont +
-  coord_flip()
+    geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    coord_flip()
 
 # Employment status: Bar plot
 employm_descrPlot <- clean_data %>%
   ggplot(aes(employment, fill = employment)) +
-  geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
-  main_theme_noMargin_smallFont +
-  coord_flip()
+    geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    coord_flip()
 
 # Parents' education: Bar plot
 # clean_data %>%
@@ -166,19 +166,36 @@ plot_grid(
   
 ```{r descriptives_networks, echo = FALSE, message = FALSE}
 
-nTies_descrPlot <- map(clean_data$alter_data, count) %>% 
+# Number of ties from activation
+nTiesAct_descrPlot <- map(clean_data$alter_data, ~nrow(distinct(., alter_name))) %>% 
   map_dfr(as_tibble, .name_repair = "universal") %>%
-  ggplot(aes(n)) +
-  geom_density() +
-  main_theme_noMargin_smallFont
+  ggplot(aes(value)) +
+    geom_density() +
+    main_theme_noMargin_smallFont
+
+# Number of important family
+
+
+# Number of important non-family
+
+
+# Number of total ties
 
 
 # Overall: distribution of activation instances
-
-
+nActivation_descrPlot <- map(clean_data$alter_data, ~nrow(distinct(., act_instance))) %>% 
+  map_dfr(as_tibble, .name_repair = "universal") %>%
+  ggplot(aes(value)) +
+    geom_density() +
+    main_theme_noMargin_smallFont
 
 
 # Per type: distrubtion of activation instances
-
+nActivation_descrPlot <- map(test, group_by, act_type) %>% 
+  map(~nrow(distinct(., act_instance))) %>% 
+  map_dfr(as_tibble, .name_repair = "universal") %>%
+  ggplot(aes(value)) +
+    geom_density() +
+    main_theme_noMargin_smallFont
 
 ```
