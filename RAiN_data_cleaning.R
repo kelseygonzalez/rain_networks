@@ -71,7 +71,8 @@ write_csv(data, file = glue("data/qualtrics_{version}_raw_{lubridate::today()}.c
 # Clean Ego Data ----------------------------------------------------------
 ego <- data %>% 
   select(ResponseId, MID, StartDate:EndDate,
-         duration = `Duration (in seconds)`, code, RecordedDate,
+         duration = `Duration (in seconds)`, code, 
+         RecordedDate, LocationLatitude, LocationLongitude,
          Q_RecaptchaScore,consent_2,Q170:zipcode) %>% 
   # wellness came in coded strangely, clean it up
   mutate(across(wellness_1:wellness_5, ~ as.numeric(str_extract(.x, "\\d$"))))
@@ -288,11 +289,16 @@ clean_data <- ego %>%
   # for now we can skip joining important people; they information we need is
   # already included in alters df
   full_join(y = nest(important_people, important_people = important_alter_name:important_person_is_alter),
-  by = c("MID", "ResponseId")) %>%
-  full_join(interview,
             by = c("MID", "ResponseId")) %>% 
-  
   full_join(nest(alters, alter_data = alter_key:important_alter_type),
             by = c("MID", "ResponseId")) 
+
+if (version == 'pretest') { 
+  clean_data <- clean_data %>% 
+    full_join(interview,
+              by = c("MID", "ResponseId"))
+}
+
+
 
 write_rds(clean_data, file = glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
