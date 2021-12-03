@@ -56,8 +56,8 @@ write_csv(data, file = glue("data/qualtrics_{version}_raw_{lubridate::today()}.c
 
 
 # if (version == 'pretest'){
-#   data <- data %>% 
-#     filter(ResponseId %in% 
+#   data <- data %>%
+#     filter(ResponseId %in%
 #              c("R_21dHgG1zVDAb9ST", "R_1HesZEpvOzoXe7T", "R_3ktVKlCR6LjmU4G", "R_0Dmp1JPuNq80Lhn",
 #                "R_1eLtKyts2ZAI9pj", "R_DTbHT84ZkToUlrP", "R_2BrFsGwvSswBRUV", "R_3PvkN59IDZFLqVQ",
 #                "R_2EgxtjnRHWibaCb", "R_2xV4sLEgZus2FRp", "R_2OMSTVwmqJE0jlX", "R_3hu9mbrmIN4qk6i",

@@ -66,6 +66,15 @@ issues_with_nulls <- clean %>%
   select(MID, ResponseId, same_repeated_example, alter_nmissing, alters_perc_unique) 
 
 
+# Show cases with worst scores on indicators -----------------------------------------------------------
+
+issues_with_nulls %>% slice_min(same_repeated_example, n = 15)
+issues_with_nulls %>% slice_max(alter_nmissing, n = 15)
+issues_with_nulls %>% slice_min(alters_perc_unique, n = 15)
+
+
+# Create flags ------------------------------------------------------------
+
 validation <- clean %>% 
   full_join(mturk, by = c("MID" = "WorkerId")) %>% 
   naniar::add_prop_miss() %>% 
@@ -85,9 +94,14 @@ validation <- clean %>%
   mutate(total_flags = sum(flag_wrong_code, flag_same_example_3x, 
              flag_less_than_5, flag_perc_missingness_overall,
              flag_low_unique_names, na.rm = T)) %>% 
-  select(starts_with("flag_"), total_flags)
+  select(MID, ResponseId, starts_with("flag_"), total_flags)
   
 
+# Check flags ----------------------------------------------------------
+
+validation %>% filter(MID %in% disqualified)
+
+validation %>% filter(total_flags > 1)
 
 
 

@@ -31,9 +31,11 @@ setwd(Paths[Sys.info()[7]])
 
 ##### Load data #####
 
-# If we end up with several data files to load, we need to generalize this
+files <- file.info(list.files("data/", full.names = TRUE))
 
-clean_data <- readRDS(glue("data/{list.files('data/')}"))
+files_filtered <- filter(files, grepl("rds", row.names(files)))
+
+clean_data <- readRDS(rownames(files_filtered)[order(rownames(files_filtered))][nrow(files_filtered)])
 
 
 ##### Prepare environment #####
@@ -166,6 +168,14 @@ plot_grid(
   
 ```{r descriptives_networks, echo = FALSE, message = FALSE}
 
+# Generate data
+#map(clean_data$important_people, group_by, important_alter_type) %>% map_dbl(~nrow(distinct(., important_alter_name)))
+
+persNet_descriptives <- clean_data %>% 
+  mutate(nTiesAct = map_dbl(alter_data, ~nrow(distinct(., alter_name))),
+         nTiesImpFamily = ,
+         nTiesImpNonFamily)
+
 # Number of ties from activation
 nTiesAct_descrPlot <- map(clean_data$alter_data, ~nrow(distinct(., alter_name))) %>% 
   map_dfr(as_tibble, .name_repair = "universal") %>%
@@ -174,7 +184,14 @@ nTiesAct_descrPlot <- map(clean_data$alter_data, ~nrow(distinct(., alter_name)))
     main_theme_noMargin_smallFont
 
 # Number of important family
+# clean_data$important_people %> map_dbl(important_alter_type)
+# clean_data$important_people[[1]] %>% count(important_alter_type) %>% .[1,2]
 
+nTiesImpFamily_descrPlot <- map(clean_data$important_people, group_by, important_alter_type) %>% 
+  map_dbl(~nrow(distinct(., important_alter_name))) %>%
+  ggplot(aes(value)) +
+    geom_density() +
+    main_theme_noMargin_smallFont
 
 # Number of important non-family
 
@@ -191,7 +208,7 @@ nActivation_descrPlot <- map(clean_data$alter_data, ~nrow(distinct(., act_instan
 
 
 # Per type: distrubtion of activation instances
-nActivation_descrPlot <- map(test, group_by, act_type) %>% 
+nActivation_descrPlot <- map(clean_data$alter_data, group_by, act_type) %>% 
   map(~nrow(distinct(., act_instance))) %>% 
   map_dfr(as_tibble, .name_repair = "universal") %>%
   ggplot(aes(value)) +
