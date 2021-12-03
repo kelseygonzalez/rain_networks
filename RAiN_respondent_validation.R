@@ -31,8 +31,8 @@ pacman::p_load(glue, tidyverse, here, naniar)
 
 
 ## IMPORTANT OPTION ## 
-version <- 'pretest'
-# version <- 'fullsurvey'
+# version <- 'pretest'
+version <- 'fullsurvey'
 
 ## ---------------------------
 
@@ -41,7 +41,7 @@ version <- 'pretest'
 # cleaned data after running "RAiN_data_cleaning.R"
 clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
 # the csv from mturk which you use to mark who gets paid and who doesn't
-mturk <- read_csv('data/Batch_4613304_batch_results.csv')
+mturk <- read_csv('data/Batch_4622633_batch_results.csv')
 
 
 
@@ -92,7 +92,7 @@ validation_alter_data <- clean %>%
 
 
 validation <- clean %>% 
-  full_join(mturk, by = c("MID" = "WorkerId")) %>% 
+  right_join(mturk, by = c("MID" = "WorkerId")) %>% 
   naniar::add_prop_miss() %>% 
   left_join(validation_alter_data, by = c('MID', 'ResponseId')) %>% 
   # fill the validation_alter_data for those who weren't calculated
@@ -152,8 +152,11 @@ rejected <- double_check_me %>%
 mturk_to_upload <- mturk %>% 
   left_join(select(clean, MID, ResponseId), by = c("WorkerId" = "MID")) %>% 
   mutate(Approve = ifelse(ResponseId %in% approved, 'x', NA_character_),
-         Reject = ifelse(ResponseId %in% rejected, 'x', NA_character_)) %>% 
+         # Reject = ifelse(ResponseId %in% rejected, 'x', NA_character_)
+         ) %>% 
     select(-ResponseId)
+
+length(approved) + length(rejected) == nrow(validation)
 
 # test to make sure each row is selected
 mturk_to_upload %>% 
@@ -166,5 +169,7 @@ mturk_to_upload %>%
   select(WorkerId, Approve, Reject)
 
 # save for upload to Mturk batch manager
-write_csv(mturk_to_upload, file = glue("data/mturk_batch_{version}_validated_{lubridate::today()}.csv"))
+write_csv(mturk_to_upload, 
+          na = '',
+          file = glue("data/mturk_batch_{version}_validated_{str_replace_all(string = lubridate::now(), pattern = ':', '-')}.csv"))
 

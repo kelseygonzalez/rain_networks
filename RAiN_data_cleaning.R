@@ -32,8 +32,8 @@ pacman::p_load(qualtRics, glue, tidyverse, here, config)
 
 
 ## IMPORTANT OPTION ## 
-version <- 'pretest'
-# version <- 'fullsurvey'
+# version <- 'pretest'
+version <- 'fullsurvey'
 
 #choose pretest of full survey
 config <- config::get(config = version)
@@ -49,7 +49,8 @@ config <- config::get(config = version)
 data <- fetch_survey(config$qualtrics_survey_id,
                      breakout_sets = FALSE,
                      add_var_labels = FALSE,
-                     force_request = TRUE)  
+                     force_request = TRUE)   %>% 
+  filter(Finished == TRUE)
 
 write_csv(data, file = glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv"))
 
