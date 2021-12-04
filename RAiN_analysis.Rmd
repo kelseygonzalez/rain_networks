@@ -14,10 +14,10 @@ if (!require("pacman")) install.packages("pacman")
 pacman::p_load(tidyverse, glue, extrafont, cowplot)
 
 
-##### Set version #####
+##### Set version ##### I think we don't need this bit here
 
-version <- 'pretest'
-# version <- 'fullsurvey'
+# version <- 'pretest'
+version <- 'fullsurvey'
 
 
 ##### Set wd #####
@@ -33,7 +33,7 @@ setwd(Paths[Sys.info()[7]])
 
 files <- file.info(list.files("data/", full.names = TRUE))
 
-files_filtered <- filter(files, grepl("rds", row.names(files)))
+files_filtered <- filter(files, grepl("rds", row.names(files))) %>% filter(grepl("fullsurvey", row.names(.)))
 
 clean_data <- readRDS(rownames(files_filtered)[order(rownames(files_filtered))][nrow(files_filtered)])
 
@@ -89,7 +89,7 @@ main_theme_noMargin_smallFont <- theme_light() +
 
 ## Demographics and SES
 
-```{r descriptives_demoSES, echo = FALSE, message = FALSE}
+```{r descriptives_demoSES, echo = FALSE, message = FALSE, warning = FALSE}
 
 # Age: desnity plot
 age_descrPlot <- clean_data %>%
@@ -149,14 +149,21 @@ employm_descrPlot <- clean_data %>%
 #   coord_flip()
 
 # Display plots
-plot_grid(
-  plotlist = list(age_descrPlot,
-                  gender_descrPlot,
-                  race_descrPlot,
-                  educ_descrPlot,
-                  income_descrPlot,
-                  employm_descrPlot),
-  ncol = 2)
+# plot_grid(
+#   plotlist = list(age_descrPlot,
+#                   gender_descrPlot,
+#                   race_descrPlot,
+#                   educ_descrPlot,
+#                   income_descrPlot,
+#                   employm_descrPlot),
+#   ncol = 1)
+
+age_descrPlot
+gender_descrPlot
+race_descrPlot
+educ_descrPlot
+income_descrPlot
+employm_descrPlot
 
 
 ```
@@ -168,43 +175,67 @@ plot_grid(
   
 ```{r descriptives_networks, echo = FALSE, message = FALSE}
 
+# Define helper function
+
+# clean_data$important_people[[1]] %>% select(important_alter_name) %>% bind_rows(clean_data$alter_data[[1]] %>% select(alter_name)) %>% mutate(alter_name = ifelse(is.na(alter_name), important_alter_name, alter_name)) %>% select(alter_name) %>% distinct() %>% nrow()
+
+get_nTiesTotal.fun <- function(x, y) {
+x %>% select(important_alter_name) %>% bind_rows(y %>% select(alter_name)) %>% mutate(alter_name = ifelse(is.na(alter_name), important_alter_name, alter_name)) %>% select(alter_name) %>% distinct() %>% nrow()
+}
+
+
+### Number of ties
 # Generate data
-#map(clean_data$important_people, group_by, important_alter_type) %>% map_dbl(~nrow(distinct(., important_alter_name)))
 
-persNet_descriptives <- clean_data %>% 
-  mutate(nTiesAct = map_dbl(alter_data, ~nrow(distinct(., alter_name))),
-         nTiesImpFamily = ,
-         nTiesImpNonFamily)
+# mutate(nTiesAct = clean_data %>% drop_na(alter_data) %>% .[,44] %>% pull() %>% map_dbl(nrow(distinct(., alter_name))))
 
-# Number of ties from activation
-nTiesAct_descrPlot <- map(clean_data$alter_data, ~nrow(distinct(., alter_name))) %>% 
-  map_dfr(as_tibble, .name_repair = "universal") %>%
-  ggplot(aes(value)) +
+nTiesAct_descriptives <- clean_data %>% 
+    drop_na(alter_data) %>%
+    mutate(nTiesAct = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., alter_name)))) %>% 
+    select(ResponseId, MID, nTiesAct)
+         
+nTiesImp_descriptives <- clean_data %>% 
+    drop_na(important_people) %>%
+    mutate(nTiesImpFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[1,2]) %>% 
+                                                          map_dfr(as_tibble, .name_repair = "universal") %>% pull(),
+           nTiesImpNonFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[2,2]) %>% 
+                                                          map_dfr(as_tibble, .name_repair = "universal") %>% pull()) %>%
+    select(ResponseId, MID, nTiesImpFamily, nTiesImpNonFamily)
+
+
+nTiesTotal_descriptives <- clean_data %>% 
+    drop_na(alter_data) %>%
+    drop_na(important_people) %>%
+    mutate(nTiesTotal = map2_dbl(.[,43] %>% pull(), .[,44] %>% pull(), get_nTiesTotal.fun)) %>%
+    select(ResponseId, MID, nTiesTotal)
+
+
+nTies_descriptives <- clean_data %>%
+  select(ResponseId, MID) %>%
+  left_join(nTiesAct_descriptives) %>%
+  left_join(nTiesImp_descriptives) %>%
+  left_join(nTiesTotal_descriptives) %>%
+  pivot_longer(cols = starts_with("nTies"),
+               names_to = "tie_type",
+               values_to = "n")
+
+
+# Create plots
+nTies_ActPlot <- nTies_descriptives %>%
+  ggplot(aes(n, color = tie_type)) +
     geom_density() +
-    main_theme_noMargin_smallFont
-
-# Number of important family
-# clean_data$important_people %> map_dbl(important_alter_type)
-# clean_data$important_people[[1]] %>% count(important_alter_type) %>% .[1,2]
-
-nTiesImpFamily_descrPlot <- map(clean_data$important_people, group_by, important_alter_type) %>% 
-  map_dbl(~nrow(distinct(., important_alter_name))) %>%
-  ggplot(aes(value)) +
-    geom_density() +
-    main_theme_noMargin_smallFont
-
-# Number of important non-family
+    main_theme_noMargin_smallFont +
+    facet_wrap(.~tie_type, scales = "free")
 
 
-# Number of total ties
 
+### Activation instances
+# Generate data
+# map_dbl(alter_data, ~nrow())
 
-# Overall: distribution of activation instances
-nActivation_descrPlot <- map(clean_data$alter_data, ~nrow(distinct(., act_instance))) %>% 
-  map_dfr(as_tibble, .name_repair = "universal") %>%
-  ggplot(aes(value)) +
-    geom_density() +
-    main_theme_noMargin_smallFont
+nActivation_descrPlot <- clean_data %>% 
+  mutate(act_instancesTotal = clean_data$alter_data %>% map_dbl(nrow),
+         act_instancesEmo = clean_data$alter_data %>% map(filter, activation_type == "emo") %>% max(activation_instance))
 
 
 # Per type: distrubtion of activation instances
