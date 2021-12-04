@@ -306,7 +306,7 @@ if (version == 'pretest') {
 # Clean age data -----------------------------------------------------------
 
 clean_data <- clean_data %>%
-  mutate(age = ifelse(age > 1000, 2021 - age, age)) %>% select(ResponseId, age)
+  mutate(age = ifelse(age > 1000, 2021 - age, age))
 
 
 # Write rds ----------------------------------------------------------------
