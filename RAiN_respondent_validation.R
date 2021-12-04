@@ -42,6 +42,9 @@ version <- 'fullsurvey'
 clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
 # the csv from mturk which you use to mark who gets paid and who doesn't
 mturk <- read_csv('data/Batch_4622861_batch_results.csv')
+# %>% 
+#   filter(is.na(ApprovalTime),
+#          is.na(RejectionTime))
 
 hit_already_completed <- read_csv('data/HID_already_paid.csv') 
 
@@ -96,7 +99,7 @@ validation_alter_data <- clean %>%
 
 
 validation <- clean %>% 
-  # right_join(mturk, by = c("MID" = "WorkerId")) %>% 
+  right_join(mturk, by = c("MID" = "WorkerId")) %>%
   naniar::add_prop_miss() %>% 
   left_join(validation_alter_data, by = c('MID', 'ResponseId')) %>%
   # fill the validation_alter_data for those who weren't calculated
@@ -107,15 +110,15 @@ validation <- clean %>%
                   alters_incorrect_duplicate_catch = 1)) %>% 
   
   # create flags
-  add_count(MID, name = 'survey_taken_n') %>% 
-  mutate(flag_double_dipper = ifelse(MID %in% already_paid_MID, 3, 0),
-         # flag_wrong_survey_code = ifelse(code != Answer.surveycode, 1, 0),
-         # flag_wrong_survey_code = ifelse(is.na(code) | is.na(Answer.surveycode), 1, 0),
+  add_count(MID, ResponseId, name = 'survey_taken_n') %>% 
+  mutate(flag_double_dipper = ifelse(MID %in% already_paid_MID & is.na(ApprovalTime), 3, 0),
+         flag_wrong_survey_code = ifelse(is.na(code) | is.na(Answer.surveycode), 1, 0),
+         flag_wrong_survey_code = ifelse(code != Answer.surveycode, 1, 0),
          flag_same_example_3x = ifelse(perc_repeated_activation_examples < .8, 1, 0),
          flag_less_than_5_min = ifelse(duration < 300, 1, 0),
          flag_perc_missingness_overall = ifelse(prop_miss_all > .25, 1, 0),
          flag_perc_missingness_alters = ifelse(alter_perc_missingness > .25, 1, 0),
-         flag_low_unique_names = ifelse(alters_perc_unique < .70, 1, 0),
+         flag_low_unique_names = ifelse(alters_perc_unique < .50, 1, 0),
          flag_max_alters = ifelse(alters_total_n == 27, 1, 0),
          flag_no_alters = ifelse(alters_total_n == 0, 1, 0),
          flag_long_lat_missing = ifelse(is.na(LocationLatitude) |
@@ -126,7 +129,7 @@ validation <- clean %>%
   # add up flags
   rowwise() %>% 
   mutate(total_flags =  sum(c_across(starts_with("flag_")), na.rm = T)) %>% 
-  select(MID, ResponseId, starts_with("flag_"), total_flags)
+  select(MID,HITId, ResponseId, starts_with("flag_"), total_flags)
   
 
 
@@ -135,6 +138,7 @@ validation <- clean %>%
 double_check_me <- validation %>%
   filter(total_flags > 1 & 
            flag_double_dipper == 0  ) %>% 
+  filter(!is.na(ResponseId)) %>%
   left_join(select(mturk, WorkerId, Answer.surveycode), by = c("MID" = "WorkerId")) %>% 
   left_join(clean, by = c('MID', 'ResponseId')) 
 
@@ -149,28 +153,77 @@ drop_no_variance_columns <- double_check_me %>%
 double_check_me %>% 
   select(-all_of(drop_no_variance_columns)) %>% 
   unnest(cols = c(alter_data)) %>% 
-  openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_invest_flags_{lubridate::today()}.xlsx"),
+  openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_invest_flags_{lubridate::today()}_batch2.xlsx"),
                        overwrite = TRUE)
 
 
 # select which cases to approve and disprove 
 # remember, only can upload to github with responseIDs NOT MIDs
 approved <- validation %>%
-  filter(total_flags <= 1) %>% 
-  pull(ResponseId)
+  filter((total_flags <= 1) |
+           (ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
+                              'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL'))) %>% 
+  select( MID, HITId) %>% 
+  mutate(Approve = 'x',
+         RequesterFeedback_a = 'Approved')
 
-rejected <- validation %>% 
+
+rejected_double_dip <- validation %>% 
   filter(flag_double_dipper == 3) %>% 
-  pull(ResponseId)
+  filter(!(ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
+                             'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL'))) %>% 
+  select( MID, HITId) %>% 
+  mutate(Reject_b = 'x',
+         RequesterFeedback_b = 'Survey Already paid, we pay only once per worker.')
+
+
+rejected_survey_not_taken <- double_check_me %>%
+  filter(is.na(ResponseId)) %>%
+  filter(!(ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
+                             'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL'))) %>% 
+  select( MID, HITId) %>% 
+  mutate(Reject_c = 'x',
+         RequesterFeedback_c = 'No Survey was received from Qualtrics for this HIT.')
+
+rejected_poor_responses <- validation %>% 
+  filter(ResponseId %in% c('R_2s5x19uXea58aLf')) %>% 
+  select(MID, HITId) %>% 
+  mutate(Reject_d = 'x',
+         RequesterFeedback_d = 'Rejected due to low response quality')
+
+
+  
+  
 
 
 # fill out mturk csv file
 mturk_to_upload <- mturk %>% 
-  left_join(select(clean, MID, ResponseId), by = c("WorkerId" = "MID")) %>% 
-  mutate(Approve = ifelse(ResponseId %in% approved, 'x', NA_character_),
-         Reject = ifelse(ResponseId %in% rejected, 'x', NA_character_)
-         ) %>% 
-    select(-ResponseId)
+  # left_join(select(clean, MID, ResponseId), by = c("WorkerId" = "MID")) %>% 
+  select(-c(Approve, Reject)) %>% 
+  left_join(approved, by = c("WorkerId" = "MID", 'HITId' = 'HITId')) %>% 
+  left_join(rejected_double_dip, by = c("WorkerId" = "MID",  'HITId' = 'HITId')) %>% 
+  left_join(rejected_survey_not_taken, by = c("WorkerId" = "MID",  'HITId' = 'HITId'))  %>% 
+  left_join(rejected_poor_responses, by = c("WorkerId" = "MID",  'HITId' = 'HITId'))  %>% 
+  mutate(RequesterFeedback = case_when(!is.na(RequesterFeedback_a) ~ RequesterFeedback_a,
+                                       !is.na(RequesterFeedback_b) ~ RequesterFeedback_b,
+                                       !is.na(RequesterFeedback_c) ~ RequesterFeedback_c,
+                                       !is.na(RequesterFeedback_d) ~ RequesterFeedback_d),
+         Reject = case_when(!is.na(Reject_b) ~ Reject_b,
+                            !is.na(Reject_c) ~ Reject_c,
+                            !is.na(Reject_d) ~ Reject_d)) %>% 
+  select(HITId, HITTypeId,Title,                  
+         Description, Keywords,Reward,
+         CreationTime, MaxAssignments,RequesterAnnotation,
+         AssignmentDurationInSeconds, AutoApprovalDelayInSeconds,Expiration,
+         NumberOfSimilarHITs, LifetimeInSeconds,AssignmentId,
+         WorkerId, AssignmentStatus,AcceptTime,
+         SubmitTime, AutoApprovalTime,ApprovalTime,
+         RejectionTime, RequesterFeedback,WorkTimeInSeconds,
+         LifetimeApprovalRate, Last30DaysApprovalRate,Last7DaysApprovalRate,
+         Input.hits, Answer.surveycode, Approve, Reject)
+
+
+
 
 length(approved) + length(rejected) == nrow(validation)
 
@@ -182,7 +235,8 @@ mturk_to_upload %>%
 # test to make sure no row is double selected 
 mturk_to_upload %>% 
   filter(!is.na(Approve) & !is.na(Reject)) %>% 
-  select(WorkerId, Approve, Reject)
+  select(WorkerId, Approve, Reject, RequesterFeedback) %>% 
+  arrange(RequesterFeedback) 
 
 # save for upload to Mturk batch manager
 write_csv(mturk_to_upload, 
@@ -192,7 +246,7 @@ write_csv(mturk_to_upload,
 
 # add onto the already_paid list to prevent double dippers
 validation %>% 
-  filter(ResponseId %in% approved) %>% 
+  filter(ResponseId %in% approved$MID) %>% 
   select('hit_already_completed' = MID) %>% 
   bind_rows(hit_already_completed) %>% 
   write_csv(file = 'data/HID_already_paid.csv')
