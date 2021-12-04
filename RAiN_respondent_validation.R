@@ -41,7 +41,11 @@ version <- 'fullsurvey'
 # cleaned data after running "RAiN_data_cleaning.R"
 clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
 # the csv from mturk which you use to mark who gets paid and who doesn't
-mturk <- read_csv('data/Batch_4622633_batch_results.csv')
+mturk <- read_csv('data/Batch_4622861_batch_results.csv')
+
+hit_already_completed <- read_csv('data/HID_already_paid.csv') 
+
+already_paid_MID <- hit_already_completed %>% pull(hit_already_completed)
 
 
 
@@ -92,9 +96,9 @@ validation_alter_data <- clean %>%
 
 
 validation <- clean %>% 
-  right_join(mturk, by = c("MID" = "WorkerId")) %>% 
+  # right_join(mturk, by = c("MID" = "WorkerId")) %>% 
   naniar::add_prop_miss() %>% 
-  left_join(validation_alter_data, by = c('MID', 'ResponseId')) %>% 
+  left_join(validation_alter_data, by = c('MID', 'ResponseId')) %>%
   # fill the validation_alter_data for those who weren't calculated
   replace_na(list(perc_repeated_activation_examples = 1,
                   alter_perc_missingness = 1,
@@ -104,8 +108,9 @@ validation <- clean %>%
   
   # create flags
   add_count(MID, name = 'survey_taken_n') %>% 
-  mutate(flag_wrong_survey_code = ifelse(code != Answer.surveycode, 1, 0),
-         flag_wrong_survey_code = ifelse(is.na(code) | is.na(Answer.surveycode), 1, 0),
+  mutate(flag_double_dipper = ifelse(MID %in% already_paid_MID, 3, 0),
+         # flag_wrong_survey_code = ifelse(code != Answer.surveycode, 1, 0),
+         # flag_wrong_survey_code = ifelse(is.na(code) | is.na(Answer.surveycode), 1, 0),
          flag_same_example_3x = ifelse(perc_repeated_activation_examples < .8, 1, 0),
          flag_less_than_5_min = ifelse(duration < 300, 1, 0),
          flag_perc_missingness_overall = ifelse(prop_miss_all > .25, 1, 0),
@@ -128,14 +133,24 @@ validation <- clean %>%
 # create file for manual checks
 
 double_check_me <- validation %>%
-  filter(total_flags > 1) %>% 
+  filter(total_flags > 1 & 
+           flag_double_dipper == 0  ) %>% 
   left_join(select(mturk, WorkerId, Answer.surveycode), by = c("MID" = "WorkerId")) %>% 
   left_join(clean, by = c('MID', 'ResponseId')) 
 
 # download double check file if need be for exploration in excel
+drop_no_variance_columns <- double_check_me %>%
+  ungroup() %>% 
+  summarize(across(starts_with('flag_'), sum)) %>% 
+  pivot_longer(cols = everything()) %>% 
+  filter(value == 0) %>% 
+  pull(name)
+
 double_check_me %>% 
+  select(-all_of(drop_no_variance_columns)) %>% 
   unnest(cols = c(alter_data)) %>% 
-  openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_invest_flags_{lubridate::today()}.xlsx"))
+  openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_invest_flags_{lubridate::today()}.xlsx"),
+                       overwrite = TRUE)
 
 
 # select which cases to approve and disprove 
@@ -144,7 +159,8 @@ approved <- validation %>%
   filter(total_flags <= 1) %>% 
   pull(ResponseId)
 
-rejected <- double_check_me %>% 
+rejected <- validation %>% 
+  filter(flag_double_dipper == 3) %>% 
   pull(ResponseId)
 
 
@@ -152,7 +168,7 @@ rejected <- double_check_me %>%
 mturk_to_upload <- mturk %>% 
   left_join(select(clean, MID, ResponseId), by = c("WorkerId" = "MID")) %>% 
   mutate(Approve = ifelse(ResponseId %in% approved, 'x', NA_character_),
-         # Reject = ifelse(ResponseId %in% rejected, 'x', NA_character_)
+         Reject = ifelse(ResponseId %in% rejected, 'x', NA_character_)
          ) %>% 
     select(-ResponseId)
 
@@ -173,3 +189,10 @@ write_csv(mturk_to_upload,
           na = '',
           file = glue("data/mturk_batch_{version}_validated_{str_replace_all(string = lubridate::now(), pattern = ':', '-')}.csv"))
 
+
+# add onto the already_paid list to prevent double dippers
+validation %>% 
+  filter(ResponseId %in% approved) %>% 
+  select('hit_already_completed' = MID) %>% 
+  bind_rows(hit_already_completed) %>% 
+  write_csv(file = 'data/HID_already_paid.csv')
