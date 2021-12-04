@@ -49,7 +49,8 @@ config <- config::get(config = version)
 data <- fetch_survey(config$qualtrics_survey_id,
                      breakout_sets = FALSE,
                      add_var_labels = FALSE,
-                     force_request = TRUE)  
+                     force_request = TRUE)   %>% 
+  filter(Finished == TRUE)
 
 write_csv(data, file = glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv"))
 
@@ -179,7 +180,7 @@ alters_info <-
   
 
 
-alters_activation <- 
+alters_activation <-
   data %>% 
   select(ResponseId, MID,
          emo_act_1:Inst3Name_catch3, 
@@ -196,7 +197,7 @@ alters_activation <-
                             "alter_number_within_instance"),
                names_pattern = "(\\w{3,4})(\\d)Name_(\\d)$",
                values_to = "alter_name",
-               names_repair = 'unique') %>% 
+               names_repair = 'unique') %>%
   # drop duplicates from reshaping
   filter(str_to_lower(activation_type) == str_to_lower(activation_type_to_verify_name),
          activation_instance == activation_instance_to_verify_name) %>% 
@@ -208,7 +209,7 @@ alters_activation <-
                                            activation_type == "Inst"~ 3),
            across(c(activation_type_num, activation_instance, alter_number_within_instance), as.numeric), 
            alter_key = ((activation_type_num-1)*9) + (activation_instance*(activation_instance-1))+ (alter_number_within_instance)) %>% 
-  select(-activation_type_num) %>% 
+  select(-activation_type_num) %>%  
   
   # reshape the why_ questions 
   rename_with(~ str_replace(string = .x, patter = "_\\d{1,2}_TEXT$", "_TEXT"), 
@@ -223,7 +224,7 @@ alters_activation <-
   pivot_wider(id_cols = !c(why,why_optional_text),
               names_from = "why_optional_text", 
               names_glue = "why{why_optional_text}",
-              values_from = "why") %>% 
+              values_from = "why") %>%  
   mutate(why =  ifelse(!is.na(whyTEXT), paste0(as.character(why), ", ", whyTEXT), why)) %>% 
   select(-whyTEXT) %>% 
   mutate(alter_number_to_verify_why = case_when(alter_letter_to_verify_why == 'a' ~ 1,
@@ -236,6 +237,7 @@ alters_activation <-
   select(-c(activation_type_to_verify_why, activation_instance_to_verify_why, 
             alter_number_to_verify_why, alter_letter_to_verify_why))   %>% 
   # reshape the catch questions 
+  mutate(Emo1Name_catch1 = NA, Emo1Name_catch2 = NA, Emo1Name_catch3 = NA) %>% 
   pivot_longer(cols = contains("catch"),
                names_to = c("activation_type_to_verify_catch",
                             "activation_instance_to_verify_catch",
@@ -310,3 +312,4 @@ clean_data <- clean_data %>%
 # Write rds ----------------------------------------------------------------
 
 write_rds(clean_data, file = glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
+
