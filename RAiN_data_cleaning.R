@@ -32,8 +32,8 @@ pacman::p_load(qualtRics, glue, tidyverse, here, config)
 
 
 ## IMPORTANT OPTION ## 
-version <- 'pretest'
-# version <- 'fullsurvey'
+# version <- 'pretest'
+version <- 'fullsurvey'
 
 #choose pretest of full survey
 config <- config::get(config = version)
@@ -300,5 +300,13 @@ if (version == 'pretest') {
 }
 
 
+
+# Clean age data -----------------------------------------------------------
+
+clean_data <- clean_data %>%
+  mutate(age = ifelse(age > 1000, 2021 - age, age)) %>% select(ResponseId, age)
+
+
+# Write rds ----------------------------------------------------------------
 
 write_rds(clean_data, file = glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
