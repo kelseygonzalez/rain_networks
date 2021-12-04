@@ -133,12 +133,29 @@ validation <- clean %>%
 
 
 
+# select which cases to approve and disprove 
+# remember, only can upload to github with responseIDs NOT MIDs
+approved <- validation %>%
+  filter((total_flags <= 1) |
+           (ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
+                              'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL', 
+                              'R_2qELJ29qJwyJrb0','R_2zZLO18c3LMQ9ss','R_2U0iioWA0IEx0hW',
+                              'R_w4wrdNM0WwZgB8t','R_1zdIOXjNtSxwReF','R_2Yh6JNqVCRqylWp',
+                              'R_ZC6RxDxU8SPsF57','R_3k1DfomFVRxumu8','R_33mAxizCzef41IC',
+                              'R_2dfDkG90DQtHuKt', 'R_1LpB2HZXiCMaSgj'
+           ))) %>% 
+  select( MID, HITId) %>% 
+  mutate(Approve = 'x',
+         RequesterFeedback_a = 'Approved')
+
+
 # create file for manual checks
 
 double_check_me <- validation %>%
   filter(total_flags > 1 & 
            flag_double_dipper == 0  ) %>% 
   filter(!is.na(ResponseId)) %>%
+  anti_join(approved, by = c("MID", "HITId")) %>% 
   left_join(select(mturk, WorkerId, Answer.surveycode), by = c("MID" = "WorkerId")) %>% 
   left_join(clean, by = c('MID', 'ResponseId')) 
 
@@ -157,36 +174,38 @@ double_check_me %>%
                        overwrite = TRUE)
 
 
-# select which cases to approve and disprove 
-# remember, only can upload to github with responseIDs NOT MIDs
-approved <- validation %>%
-  filter((total_flags <= 1) |
-           (ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
-                              'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL'))) %>% 
-  select( MID, HITId) %>% 
-  mutate(Approve = 'x',
-         RequesterFeedback_a = 'Approved')
-
+# decide who to reject
 
 rejected_double_dip <- validation %>% 
   filter(flag_double_dipper == 3) %>% 
-  filter(!(ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
-                             'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL'))) %>% 
+  anti_join(approved, by = c("MID", "HITId")) %>% 
   select( MID, HITId) %>% 
   mutate(Reject_b = 'x',
          RequesterFeedback_b = 'Survey Already paid, we pay only once per worker.')
 
 
-rejected_survey_not_taken <- double_check_me %>%
+rejected_survey_not_taken <- validation %>%
   filter(is.na(ResponseId)) %>%
-  filter(!(ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
-                             'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL'))) %>% 
+  anti_join(approved, by = c("MID", "HITId")) %>% 
   select( MID, HITId) %>% 
   mutate(Reject_c = 'x',
          RequesterFeedback_c = 'No Survey was received from Qualtrics for this HIT.')
 
 rejected_poor_responses <- validation %>% 
-  filter(ResponseId %in% c('R_2s5x19uXea58aLf')) %>% 
+  filter(ResponseId %in% c('R_2s5x19uXea58aLf','R_3M9Ztlh4KdTx6rQ',
+                           'R_3JfuTwQWToCyTuV','R_1pPEO230mmLWEbK',
+                           'R_3D5hcr0hItlv5aZ','R_An9AnLvg0912tgZ',
+                           'R_zVBrNzzC7lUCtPP','R_1hYkg1rys53HVwF',
+                           'R_vZztkSMD0XOLZUB','R_3qQhPzEHA0IVx5T',
+                           'R_w4wVkkQ8XdfyUmZ','R_4GAcstrBfNWZ3vb',
+                           'R_2aCrSMjJ5lgxPMe','R_2xJhRVR8K0VobhO',
+                           'R_2xJhRVR8K0VobhO','R_22JkMYnT65EkKKY',
+                           'R_SUBcWSdfRJ3CmRz','R_dbuZb1se6PeoEY9',
+                           'R_3oXDbTGgYODrLe1','R_22WTSM8ttAacqN6',
+                           'R_2vZVaibJm5x75VB','R_232iYcjen9VKWbU',
+                           'R_1rvJWcHeOwHSdda','R_C1wJJzPk07zxq37',
+                           'R_2s5x19uXea58aLf')) %>% 
+  anti_join(approved, by = c("MID", "HITId")) %>% 
   select(MID, HITId) %>% 
   mutate(Reject_d = 'x',
          RequesterFeedback_d = 'Rejected due to low response quality')
@@ -225,7 +244,7 @@ mturk_to_upload <- mturk %>%
 
 
 
-length(approved) + length(rejected) == nrow(validation)
+length(approved) + length(rejected_double_dip) + length(rejected_poor_responses) + length(rejected_survey_not_taken) == nrow(validation)
 
 # test to make sure each row is selected
 mturk_to_upload %>% 
