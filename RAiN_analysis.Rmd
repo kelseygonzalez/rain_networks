@@ -37,6 +37,16 @@ files_filtered <- filter(files, grepl("rds", row.names(files))) %>% filter(grepl
 
 clean_data <- readRDS(rownames(files_filtered)[order(rownames(files_filtered))][nrow(files_filtered)])
 
+##### Remove Rejected Data #####
+mturk_batches <- read_csv('data/Batch_1_results.csv') %>% 
+  mutate(batch = 1) %>% 
+  bind_rows(mutate(read_csv('data/Batch_2_results.csv'), batch = 2)) %>% 
+  bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3)) %>% 
+  filter(AssignmentStatus == "Rejected")
+
+clean_data <- clean_data %>% 
+  anti_join(mturk_batches, by= c("MID" = "WorkerId"))
+
 
 ##### Prepare environment #####
 
