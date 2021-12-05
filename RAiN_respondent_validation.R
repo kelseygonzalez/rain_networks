@@ -33,6 +33,7 @@ pacman::p_load(glue, tidyverse, here, naniar)
 ## IMPORTANT OPTION ## 
 # version <- 'pretest'
 version <- 'fullsurvey'
+batch <- 3
 
 ## ---------------------------
 
@@ -41,7 +42,7 @@ version <- 'fullsurvey'
 # cleaned data after running "RAiN_data_cleaning.R"
 clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
 # the csv from mturk which you use to mark who gets paid and who doesn't
-mturk <- read_csv('data/Batch_4622861_batch_results.csv')
+mturk <- read_csv(glue('data/Batch_{batch}_results.csv'))
 # %>% 
 #   filter(is.na(ApprovalTime),
 #          is.na(RejectionTime))
@@ -111,7 +112,8 @@ validation <- clean %>%
   
   # create flags
   add_count(MID, ResponseId, name = 'survey_taken_n') %>% 
-  mutate(flag_double_dipper = ifelse(MID %in% already_paid_MID & is.na(ApprovalTime), 3, 0),
+  mutate(
+    flag_double_dipper = ifelse(MID %in% already_paid_MID & is.na(ApprovalTime), 3, 0),
          flag_wrong_survey_code = ifelse(is.na(code) | is.na(Answer.surveycode), 1, 0),
          flag_wrong_survey_code = ifelse(code != Answer.surveycode, 1, 0),
          flag_same_example_3x = ifelse(perc_repeated_activation_examples < .8, 1, 0),
@@ -136,48 +138,22 @@ validation <- clean %>%
 # select which cases to approve and disprove 
 # remember, only can upload to github with responseIDs NOT MIDs
 approved <- validation %>%
-  filter((total_flags <= 1) |
+  filter((total_flags <= 2) |
            (ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
                               'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL', 
                               'R_2qELJ29qJwyJrb0','R_2zZLO18c3LMQ9ss','R_2U0iioWA0IEx0hW',
                               'R_w4wrdNM0WwZgB8t','R_1zdIOXjNtSxwReF','R_2Yh6JNqVCRqylWp',
                               'R_ZC6RxDxU8SPsF57','R_3k1DfomFVRxumu8','R_33mAxizCzef41IC',
-                              'R_2dfDkG90DQtHuKt', 'R_1LpB2HZXiCMaSgj'
+                              'R_2dfDkG90DQtHuKt', 'R_1LpB2HZXiCMaSgj', 'R_1P5FwixTbyLLFIV'
            ))) %>% 
   select( MID, HITId) %>% 
   mutate(Approve = 'x',
          RequesterFeedback_a = 'Approved')
 
-
-# create file for manual checks
-
-double_check_me <- validation %>%
-  filter(total_flags > 1 & 
-           flag_double_dipper == 0  ) %>% 
-  filter(!is.na(ResponseId)) %>%
-  anti_join(approved, by = c("MID", "HITId")) %>% 
-  left_join(select(mturk, WorkerId, Answer.surveycode), by = c("MID" = "WorkerId")) %>% 
-  left_join(clean, by = c('MID', 'ResponseId')) 
-
-# download double check file if need be for exploration in excel
-drop_no_variance_columns <- double_check_me %>%
-  ungroup() %>% 
-  summarize(across(starts_with('flag_'), sum)) %>% 
-  pivot_longer(cols = everything()) %>% 
-  filter(value == 0) %>% 
-  pull(name)
-
-double_check_me %>% 
-  select(-all_of(drop_no_variance_columns)) %>% 
-  unnest(cols = c(alter_data)) %>% 
-  openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_invest_flags_{lubridate::today()}_batch2.xlsx"),
-                       overwrite = TRUE)
-
-
 # decide who to reject
 
 rejected_double_dip <- validation %>% 
-  filter(flag_double_dipper == 3) %>% 
+  filter(flag_double_dipper > 0) %>% 
   anti_join(approved, by = c("MID", "HITId")) %>% 
   select( MID, HITId) %>% 
   mutate(Reject_b = 'x',
@@ -211,6 +187,30 @@ rejected_poor_responses <- validation %>%
          RequesterFeedback_d = 'Rejected due to low response quality')
 
 
+
+# create file for manual checks
+
+double_check_me <- validation %>%
+  anti_join(approved, by = c("MID", "HITId")) %>% 
+  anti_join(rejected_double_dip, by = c("MID", "HITId")) %>% 
+  anti_join(rejected_survey_not_taken, by = c("MID", "HITId")) %>% 
+  anti_join(rejected_poor_responses, by = c("MID", "HITId")) %>% 
+  left_join(select(mturk, WorkerId, Answer.surveycode), by = c("MID" = "WorkerId")) %>% 
+  left_join(clean, by = c('MID', 'ResponseId')) 
+
+# download double check file if need be for exploration in excel
+drop_no_variance_columns <- double_check_me %>%
+  ungroup() %>% 
+  summarize(across(starts_with('flag_'), sum)) %>% 
+  pivot_longer(cols = everything()) %>% 
+  filter(value == 0) %>% 
+  pull(name)
+
+double_check_me %>% 
+  select(-all_of(drop_no_variance_columns)) %>% 
+  unnest(cols = c(alter_data)) %>% 
+  openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_{lubridate::today()}_batch3.xlsx"),
+                       overwrite = TRUE)
 
 
 
