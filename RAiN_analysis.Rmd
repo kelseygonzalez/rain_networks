@@ -103,7 +103,7 @@ main_theme_noMargin_smallFont <- theme_light() +
 
 # Age: desnity plot
 age_descrPlot <- clean_data %>%
-  ggplot(aes(age)) +
+  ggplot(aes(as.numeric(age))) +
     geom_density() +
     main_theme_noMargin_smallFont
 
@@ -211,10 +211,8 @@ nTiesAct_descriptives <- clean_data %>%
          
 nTiesImp_descriptives <- clean_data %>% 
     drop_na(important_people) %>%
-    mutate(nTiesImpFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[1,2]) %>% 
-                                                          map_dfr(as_tibble, .name_repair = "universal") %>% pull(),
-           nTiesImpNonFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[2,2]) %>% 
-                                                          map_dfr(as_tibble, .name_repair = "universal") %>% pull()) %>%
+    mutate(nTiesImpFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[1,2]) %>% map_dfr(as_tibble, .name_repair = "universal") %>% pull(),
+           nTiesImpNonFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[2,2]) %>% map_dfr(as_tibble, .name_repair = "universal") %>% pull()) %>%
     select(ResponseId, MID, nTiesImpFamily, nTiesImpNonFamily)
 
 

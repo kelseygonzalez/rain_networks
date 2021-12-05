@@ -305,8 +305,11 @@ if (version == 'pretest') {
 
 # Clean age data -----------------------------------------------------------
 
-# clean_data <- clean_data %>%
-#   mutate(age = ifelse(age > 1000, 2021 - age, age))
+clean_data <- clean_data %>%
+  mutate(age = str_remove(age, "03.29."),
+         age = as.numeric(age),
+         age = ifelse(age > 1000, 2021 - age, age))
+
 
 
 # Write rds ----------------------------------------------------------------
