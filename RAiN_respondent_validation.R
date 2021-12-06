@@ -25,7 +25,7 @@ memory.limit(30000000)     # this is needed on some PCs to increase memory allow
 ## load up the packages we will need: 
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(glue, tidyverse, here, naniar)
+pacman::p_load(glue, tidyverse, here, naniar, rIP)
 
 ## ---------------------------
 
@@ -277,3 +277,22 @@ validation %>%
   select('hit_already_completed' = MID) %>% 
   bind_rows(hit_already_completed) %>% 
   write_csv(file = 'data/HID_already_paid.csv')
+
+
+# Check IPs -------------------------------------------------------------
+
+IPcheck_data <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv")) %>% select(IPAddress) %>% as.data.frame()
+
+sicss_iphub_key <- "MTYxMzA6RHg2MEh5NVBJTkRVSDgwQXNqS2FVaGJHSEh6Y0liVzQ="
+
+getIPinfo(IPcheck_data,
+          "IPAddress",
+          sicss_iphub_key)
+
+
+
+
+
+
+
+
