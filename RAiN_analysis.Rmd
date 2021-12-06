@@ -48,9 +48,7 @@ clean_data <- clean_data %>%
   anti_join(mturk_batches, by= c("MID" = "WorkerId"))
 
 
-##### Prepare environment #####
-
-### Load fonts ###
+##### Load fonts #####
 loadfonts()
 
 
@@ -84,10 +82,10 @@ main_theme_noMargin_smallFont <- theme_light() +
 
 * Check Small stuff for angles  
   
-* Add SES of origin to demo & SES descriptives   
-* Robustness check: Remove all people with activation examples = 27 
+* Change SES of origin in demo & SES descriptives to highest degree between two parents   
+* Cahnge histograms to percent  
+* Fix issue with code for act_instancesEmo: For two respondents return is -Inf  
 * Income descr plot: NAs are not displayed  
-* Distrubtion of activation instances (overall, per type)  
 * Rate of match: Activation ties v. "important ties"
 * Differences in tie numbers: age, gender, race, education, income  
 * Differences in activation instances: age, gender, race, SES  
@@ -143,20 +141,19 @@ employm_descrPlot <- clean_data %>%
     main_theme_noMargin_smallFont +
     coord_flip()
 
-# Parents' education: Bar plot
-# clean_data %>%
-#   mutate(across(c(father_ed, mother_ed), as_factor, levels = c("less than high school", 
-#                                                                "High school graduate",
-#                                                                "Some college",
-#                                                                "Associate's or Technical degree",
-#                                                                "Bachelor's Ddegree",
-#                                                                "Graduate or professional degree"),
-#                                                   ordered = TRUE)) %>%
-#   mutate(parents_educ = max(father_ed, mother_ed)) %>%
-#   ggplot(aes(parents_educ)) +
-#   geom_bar(aes(y = (..count..)/sum(..count..))) +
-#   main_theme +
-#   coord_flip()
+# Mother's education: Bar plot
+
+parentEduc_descrPlot <- clean_data %>%
+  select(father_ed, mother_ed) %>%
+  pivot_longer(everything(),
+               names_to = "parent",
+               values_to = "education") %>%
+  ggplot(aes(education, fill = parent)) +
+    geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    coord_flip() +
+  facet_wrap(.~parent)
+
 
 # Display plots
 # plot_grid(
@@ -174,6 +171,7 @@ race_descrPlot
 educ_descrPlot
 income_descrPlot
 employm_descrPlot
+parentEduc_descrPlot
 
 
 ```
@@ -244,20 +242,26 @@ nTies_descriptives %>%
 
 ### Activation instances
 # Generate data
-# map_dbl(alter_data, ~nrow())
+nActivation_descriptives <- clean_data %>%
+  drop_na(alter_data) %>%
+  mutate(act_instancesTotal = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., activation_instance_example))),
+         act_instancesEmo = map(.[,44] %>% pull(), filter, activation_type == "emo") %>% map(select, activation_instance) %>% map_dbl(max),
+         act_instancesInfo = map(.[,44] %>% pull(), filter, activation_type == "Info") %>% map(select, activation_instance) %>% map_dbl(max),
+         act_instancesInst = map(.[,44] %>% pull(), filter, activation_type == "Inst") %>% map(select, activation_instance) %>% map_dbl(max)) %>% 
+  select(act_instancesTotal, act_instancesEmo, act_instancesInfo, act_instancesInst) %>%
+  pivot_longer(
+    everything(),
+    names_to = "activation_instance",
+    values_to = "n"
+  )
 
-# nActivation_descrPlot <- clean_data %>% 
-#   mutate(act_instancesTotal = clean_data$alter_data %>% map_dbl(nrow),
-#          act_instancesEmo = clean_data$alter_data %>% map(filter, activation_type == "emo") %>% max(activation_instance))
-# 
-# 
-# # Per type: distrubtion of activation instances
-# nActivation_descrPlot <- map(clean_data$alter_data, group_by, act_type) %>% 
-#   map(~nrow(distinct(., act_instance))) %>% 
-#   map_dfr(as_tibble, .name_repair = "universal") %>%
-#   ggplot(aes(value)) +
-#     geom_density() +
-#     main_theme_noMargin_smallFont
+
+# Create plot
+nActivation_descriptives %>%
+  ggplot(aes(n, fill = activation_instance)) +
+    geom_histogram(show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    facet_wrap(.~activation_instance, scales = "free")
 
 ```
   
@@ -267,6 +271,8 @@ Here's the plots with all respondents nTiesAct == 27 filtered out.
   
   
 ```{r descriptives_networks_filtered, echo = FALSE, message = FALSE, warning = FALSE}
+
+### Number of Ties
 
 clean_data %>%
   select(ResponseId, MID) %>%
@@ -281,6 +287,28 @@ clean_data %>%
     geom_histogram(show.legend = FALSE) +
     main_theme_noMargin_smallFont +
     facet_wrap(.~tie_type, scales = "free")
+
+
+### Number of activation instances
+
+clean_data %>%
+  drop_na(alter_data) %>%
+  left_join(nTiesAct_descriptives) %>%
+  filter(nTiesAct < 27) %>%
+  mutate(act_instancesTotal = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., activation_instance_example))),
+         act_instancesEmo = map(.[,44] %>% pull(), filter, activation_type == "emo") %>% map(select, activation_instance) %>% map_dbl(max),
+         act_instancesInfo = map(.[,44] %>% pull(), filter, activation_type == "Info") %>% map(select, activation_instance) %>% map_dbl(max),
+         act_instancesInst = map(.[,44] %>% pull(), filter, activation_type == "Inst") %>% map(select, activation_instance) %>% map_dbl(max)) %>% 
+  select(act_instancesTotal, act_instancesEmo, act_instancesInfo, act_instancesInst) %>%
+  pivot_longer(
+    everything(),
+    names_to = "activation_instance",
+    values_to = "n") %>%
+  ggplot(aes(n, fill = activation_instance)) +
+    geom_histogram(show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    facet_wrap(.~activation_instance, scales = "free")
+
 
 ```
 
