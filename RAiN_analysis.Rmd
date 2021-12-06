@@ -85,7 +85,7 @@ main_theme_noMargin_smallFont <- theme_light() +
 * Check Small stuff for angles  
   
 * Add SES of origin to demo & SES descriptives   
-* Change colors in demo & SES descriptives (by changing column type)   
+* Robustness check: Remove all people with activation examples = 27 
 * Income descr plot: NAs are not displayed  
 * Distrubtion of activation instances (overall, per type)  
 * Rate of match: Activation ties v. "important ties"
@@ -260,3 +260,30 @@ nTies_descriptives %>%
 #     main_theme_noMargin_smallFont
 
 ```
+  
+  
+  
+Here's the plots with all respondents nTiesAct == 27 filtered out.
+  
+  
+```{r descriptives_networks_filtered, echo = FALSE, message = FALSE, warning = FALSE}
+
+clean_data %>%
+  select(ResponseId, MID) %>%
+  left_join(nTiesAct_descriptives) %>%
+  left_join(nTiesImp_descriptives) %>%
+  left_join(nTiesTotal_descriptives) %>%
+  filter(nTiesAct < 27) %>%
+  pivot_longer(cols = starts_with("nTies"),
+               names_to = "tie_type",
+               values_to = "n") %>%
+  ggplot(aes(n, fill = tie_type)) +
+    geom_histogram(show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    facet_wrap(.~tie_type, scales = "free")
+
+```
+
+
+
+
