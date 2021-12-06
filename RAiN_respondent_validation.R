@@ -281,13 +281,26 @@ validation %>%
 
 # Check IPs -------------------------------------------------------------
 
-IPcheck_data <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv")) %>% select(IPAddress) %>% as.data.frame()
+# Prepare data
+
+IPcheck_data <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv")) %>% select(ResponseId, MID, IPAddress) %>% as.data.frame()
+
+# Get Reject data to use for facet_wrap
+
+mturk_batches <- read_csv('data/Batch_1_results.csv') %>% 
+  mutate(batch = 1) %>% 
+  bind_rows(mutate(read_csv('data/Batch_2_results.csv'), batch = 2)) %>% 
+  bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3)) %>% 
+  filter(AssignmentStatus == "Rejected")
+
+# Our ip hub key
 
 sicss_iphub_key <- "MTYxMzA6RHg2MEh5NVBJTkRVSDgwQXNqS2FVaGJHSEh6Y0liVzQ="
 
-getIPinfo(IPcheck_data,
-          "IPAddress",
-          sicss_iphub_key)
+# Assess IP addresses
+IPcheck_data %>% select(IPAddress) %>%
+getIPinfo(i = "IPAddress",
+          iphub_key = sicss_iphub_key)
 
 
 
