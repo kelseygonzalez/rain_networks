@@ -281,6 +281,12 @@ validation %>%
 
 # Check IPs -------------------------------------------------------------
 
+# Ressources
+# https://cran.r-project.org/web/packages/rIP/rIP.pdf
+# https://github.com/ip2location/ip2proxy-r
+# https://lite.ip2location.com/ip2proxy-lite
+
+
 # Prepare data
 
 IPcheck_data <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv")) %>% select(ResponseId, MID, IPAddress) %>% as.data.frame()
