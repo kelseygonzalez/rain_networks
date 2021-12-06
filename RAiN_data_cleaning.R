@@ -177,7 +177,7 @@ alters_info <-
   # add in the count of how many unique alters there are
   distinct() %>% 
   add_count(MID, ResponseId, name = 'alters_unique_n')
-  
+
 
 
 alters_activation <-
@@ -204,11 +204,11 @@ alters_activation <-
   drop_na(activation_instance_example,alter_name) %>% 
   select(-c(activation_type_to_verify_name, activation_instance_to_verify_name)) %>% 
   # create an alter_key which indicates which # the alter is, 1-27
-    mutate(activation_type_num = case_when(activation_type == "emo" ~ 1,
-                                           activation_type == "Info"~ 2, 
-                                           activation_type == "Inst"~ 3),
-           across(c(activation_type_num, activation_instance, alter_number_within_instance), as.numeric), 
-           alter_key = ((activation_type_num-1)*9) + (activation_instance*(activation_instance-1))+ (alter_number_within_instance)) %>% 
+  mutate(activation_type_num = case_when(activation_type == "emo" ~ 1,
+                                         activation_type == "Info"~ 2, 
+                                         activation_type == "Inst"~ 3),
+         across(c(activation_type_num, activation_instance, alter_number_within_instance), as.numeric), 
+         alter_key = ((activation_type_num-1)*9) + (activation_instance*(activation_instance-1))+ (alter_number_within_instance)) %>% 
   select(-activation_type_num) %>%  
   
   # reshape the why_ questions 
@@ -245,7 +245,7 @@ alters_activation <-
                names_pattern = "(\\w{3,4})(\\d)Name_catch(\\d)$",
                values_to = "duplicate_catch",
                names_repair = 'unique') %>%
-
+  
   # drop the duplicates from the why_questions 
   filter(str_to_lower(activation_type) == str_to_lower(activation_type_to_verify_catch) &
            activation_instance == activation_instance_to_verify_catch &
@@ -305,11 +305,16 @@ if (version == 'pretest') {
 
 # Clean age data -----------------------------------------------------------
 
-# clean_data <- clean_data %>%
-#   mutate(age = ifelse(age > 1000, 2021 - age, age))
+clean_data <- clean_data %>%
+  mutate(age = str_remove(age, "03.29."),
+         age = as.numeric(age),
+         age = ifelse(age > 1000, 2021 - age, age))
+
 
 
 # Write rds ----------------------------------------------------------------
 
 write_rds(clean_data, file = glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
+
+
 

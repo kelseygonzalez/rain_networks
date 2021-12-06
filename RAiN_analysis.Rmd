@@ -85,7 +85,7 @@ main_theme_noMargin_smallFont <- theme_light() +
 * Check Small stuff for angles  
   
 * Add SES of origin to demo & SES descriptives   
-* Change colors in demo & SES descriptives (by changing column type)   
+* Robustness check: Remove all people with activation examples = 27 
 * Income descr plot: NAs are not displayed  
 * Distrubtion of activation instances (overall, per type)  
 * Rate of match: Activation ties v. "important ties"
@@ -103,7 +103,7 @@ main_theme_noMargin_smallFont <- theme_light() +
 
 # Age: desnity plot
 age_descrPlot <- clean_data %>%
-  ggplot(aes(age)) +
+  ggplot(aes(as.numeric(age))) +
     geom_density() +
     main_theme_noMargin_smallFont
 
@@ -166,7 +166,7 @@ employm_descrPlot <- clean_data %>%
 #                   educ_descrPlot,
 #                   income_descrPlot,
 #                   employm_descrPlot),
-#   ncol = 1)
+#   ncol = 2)
 
 age_descrPlot
 gender_descrPlot
@@ -183,7 +183,12 @@ employm_descrPlot
   
 ## Personal network and support activation
   
-```{r descriptives_networks, echo = FALSE, message = FALSE}
+  
+The plots show that we have what I believe to be a data quality problem: Many people seem to fill out all windows when asked for activation examples, alters they talked to in each example, and important people. Not sure how we can fix this. With activation alters, we may exclude, as a robustness check at least, everyone who filled out all 9 possible activation examples, and all alters for each example. With important people we probably shouldn't do anything, it's very possible that many people fill out all five slots for both family and non-family important people. Maybe we could exclude those people here as well who filled up everything for tie activation.
+  
+  
+  
+```{r descriptives_networks, echo = FALSE, message = FALSE, warning = FALSE}
 
 # Define helper function
 
@@ -206,10 +211,8 @@ nTiesAct_descriptives <- clean_data %>%
          
 nTiesImp_descriptives <- clean_data %>% 
     drop_na(important_people) %>%
-    mutate(nTiesImpFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[1,2]) %>% 
-                                                          map_dfr(as_tibble, .name_repair = "universal") %>% pull(),
-           nTiesImpNonFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[2,2]) %>% 
-                                                          map_dfr(as_tibble, .name_repair = "universal") %>% pull()) %>%
+    mutate(nTiesImpFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[1,2]) %>% map_dfr(as_tibble, .name_repair = "universal") %>% pull(),
+           nTiesImpNonFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[2,2]) %>% map_dfr(as_tibble, .name_repair = "universal") %>% pull()) %>%
     select(ResponseId, MID, nTiesImpFamily, nTiesImpNonFamily)
 
 
@@ -230,10 +233,10 @@ nTies_descriptives <- clean_data %>%
                values_to = "n")
 
 
-# Create plots
-nTies_ActPlot <- nTies_descriptives %>%
-  ggplot(aes(n, color = tie_type)) +
-    geom_density() +
+# Create plot
+nTies_descriptives %>%
+  ggplot(aes(n, fill = tie_type)) +
+    geom_histogram(show.legend = FALSE) +
     main_theme_noMargin_smallFont +
     facet_wrap(.~tie_type, scales = "free")
 
@@ -243,17 +246,44 @@ nTies_ActPlot <- nTies_descriptives %>%
 # Generate data
 # map_dbl(alter_data, ~nrow())
 
-nActivation_descrPlot <- clean_data %>% 
-  mutate(act_instancesTotal = clean_data$alter_data %>% map_dbl(nrow),
-         act_instancesEmo = clean_data$alter_data %>% map(filter, activation_type == "emo") %>% max(activation_instance))
-
-
-# Per type: distrubtion of activation instances
-nActivation_descrPlot <- map(clean_data$alter_data, group_by, act_type) %>% 
-  map(~nrow(distinct(., act_instance))) %>% 
-  map_dfr(as_tibble, .name_repair = "universal") %>%
-  ggplot(aes(value)) +
-    geom_density() +
-    main_theme_noMargin_smallFont
+# nActivation_descrPlot <- clean_data %>% 
+#   mutate(act_instancesTotal = clean_data$alter_data %>% map_dbl(nrow),
+#          act_instancesEmo = clean_data$alter_data %>% map(filter, activation_type == "emo") %>% max(activation_instance))
+# 
+# 
+# # Per type: distrubtion of activation instances
+# nActivation_descrPlot <- map(clean_data$alter_data, group_by, act_type) %>% 
+#   map(~nrow(distinct(., act_instance))) %>% 
+#   map_dfr(as_tibble, .name_repair = "universal") %>%
+#   ggplot(aes(value)) +
+#     geom_density() +
+#     main_theme_noMargin_smallFont
 
 ```
+  
+  
+  
+Here's the plots with all respondents nTiesAct == 27 filtered out.
+  
+  
+```{r descriptives_networks_filtered, echo = FALSE, message = FALSE, warning = FALSE}
+
+clean_data %>%
+  select(ResponseId, MID) %>%
+  left_join(nTiesAct_descriptives) %>%
+  left_join(nTiesImp_descriptives) %>%
+  left_join(nTiesTotal_descriptives) %>%
+  filter(nTiesAct < 27) %>%
+  pivot_longer(cols = starts_with("nTies"),
+               names_to = "tie_type",
+               values_to = "n") %>%
+  ggplot(aes(n, fill = tie_type)) +
+    geom_histogram(show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    facet_wrap(.~tie_type, scales = "free")
+
+```
+
+
+
+
