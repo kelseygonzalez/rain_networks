@@ -144,7 +144,9 @@ approved <- validation %>%
                               'R_2qELJ29qJwyJrb0','R_2zZLO18c3LMQ9ss','R_2U0iioWA0IEx0hW',
                               'R_w4wrdNM0WwZgB8t','R_1zdIOXjNtSxwReF','R_2Yh6JNqVCRqylWp',
                               'R_ZC6RxDxU8SPsF57','R_3k1DfomFVRxumu8','R_33mAxizCzef41IC',
-                              'R_2dfDkG90DQtHuKt', 'R_1LpB2HZXiCMaSgj', 'R_1P5FwixTbyLLFIV'
+                              'R_2dfDkG90DQtHuKt', 'R_1LpB2HZXiCMaSgj', 'R_1P5FwixTbyLLFIV',
+                              'R_11crdDcPZUQyzNM', 'R_2WPaszkg8Fmwy0s', 'R_2XamfBxCbfk6NN0',
+                              'R_didKpO3G5BFyqAN', 'R_1rJsN7Ch1zz6GRM'
            ))) %>% 
   select( MID, HITId) %>% 
   mutate(Approve = 'x',
@@ -168,49 +170,55 @@ rejected_survey_not_taken <- validation %>%
          RequesterFeedback_c = 'No Survey was received from Qualtrics for this HIT.')
 
 rejected_poor_responses <- validation %>% 
-  filter(ResponseId %in% c('R_2s5x19uXea58aLf','R_3M9Ztlh4KdTx6rQ',
-                           'R_3JfuTwQWToCyTuV','R_1pPEO230mmLWEbK',
-                           'R_3D5hcr0hItlv5aZ','R_An9AnLvg0912tgZ',
-                           'R_zVBrNzzC7lUCtPP','R_1hYkg1rys53HVwF',
-                           'R_vZztkSMD0XOLZUB','R_3qQhPzEHA0IVx5T',
-                           'R_w4wVkkQ8XdfyUmZ','R_4GAcstrBfNWZ3vb',
-                           'R_2aCrSMjJ5lgxPMe','R_2xJhRVR8K0VobhO',
-                           'R_2xJhRVR8K0VobhO','R_22JkMYnT65EkKKY',
-                           'R_SUBcWSdfRJ3CmRz','R_dbuZb1se6PeoEY9',
-                           'R_3oXDbTGgYODrLe1','R_22WTSM8ttAacqN6',
-                           'R_2vZVaibJm5x75VB','R_232iYcjen9VKWbU',
-                           'R_1rvJWcHeOwHSdda','R_C1wJJzPk07zxq37',
-                           'R_2s5x19uXea58aLf')) %>% 
+  filter(ResponseId %in% c('R_2s5x19uXea58aLf','R_3M9Ztlh4KdTx6rQ','R_3JfuTwQWToCyTuV',
+                           'R_1pPEO230mmLWEbK','R_3D5hcr0hItlv5aZ','R_An9AnLvg0912tgZ',
+                           'R_zVBrNzzC7lUCtPP','R_1hYkg1rys53HVwF','R_vZztkSMD0XOLZUB',
+                           'R_3qQhPzEHA0IVx5T','R_w4wVkkQ8XdfyUmZ','R_4GAcstrBfNWZ3vb',
+                           'R_2aCrSMjJ5lgxPMe','R_2xJhRVR8K0VobhO','R_2xJhRVR8K0VobhO',
+                           'R_22JkMYnT65EkKKY','R_SUBcWSdfRJ3CmRz','R_dbuZb1se6PeoEY9',
+                           'R_3oXDbTGgYODrLe1','R_22WTSM8ttAacqN6','R_2vZVaibJm5x75VB',
+                           'R_232iYcjen9VKWbU','R_1rvJWcHeOwHSdda','R_C1wJJzPk07zxq37',
+                           'R_2s5x19uXea58aLf', 'R_1JEDE3FF04AuJtc','R_1mpYM7AeRYyrI5M',
+                           'R_2t5TXRc2ISdKbNG','R_2VsTJwSoPzZwVnC', 'R_33pWl3aCQeHeYt3',
+                           'R_3DkzSCWx3qJCJ1W', 'R_3HYX6Nq9I6L8VGa','R_3njdLmJ0SAtlJ9c',
+                           'R_3oFoiNEKOsmbm34','R_psXpq49MovXdt2p', 'R_UsihLHKsArkwuJP',
+                           'R_VR1Ji08qzvfgqbf'
+                           )) %>% 
   anti_join(approved, by = c("MID", "HITId")) %>% 
-  select(MID, HITId) %>% 
   mutate(Reject_d = 'x',
-         RequesterFeedback_d = 'Rejected due to low response quality')
+         RequesterFeedback_d = 'Rejected due to low response quality',
+         RequesterFeedback_d = ifelse(ResponseId %in% c('R_VR1Ji08qzvfgqbf', 'R_3HYX6Nq9I6L8VGa'),
+                                      'Completed the HIT multiple times; low response quality', 
+                                      RequesterFeedback_d)) %>% 
+  select(MID, HITId,Reject_d, RequesterFeedback_d) 
 
 
 
 # create file for manual checks
-
 double_check_me <- validation %>%
-  anti_join(approved, by = c("MID", "HITId")) %>% 
-  anti_join(rejected_double_dip, by = c("MID", "HITId")) %>% 
-  anti_join(rejected_survey_not_taken, by = c("MID", "HITId")) %>% 
-  anti_join(rejected_poor_responses, by = c("MID", "HITId")) %>% 
-  left_join(select(mturk, WorkerId, Answer.surveycode), by = c("MID" = "WorkerId")) %>% 
-  left_join(clean, by = c('MID', 'ResponseId')) 
+    anti_join(approved, by = c("MID", "HITId")) %>% 
+    anti_join(rejected_double_dip, by = c("MID", "HITId")) %>% 
+    anti_join(rejected_survey_not_taken, by = c("MID", "HITId")) %>% 
+    anti_join(rejected_poor_responses, by = c("MID", "HITId")) %>% 
+    left_join(select(mturk, WorkerId, Answer.surveycode), by = c("MID" = "WorkerId")) %>% 
+    left_join(clean, by = c('MID', 'ResponseId')) 
 
-# download double check file if need be for exploration in excel
-drop_no_variance_columns <- double_check_me %>%
-  ungroup() %>% 
-  summarize(across(starts_with('flag_'), sum)) %>% 
-  pivot_longer(cols = everything()) %>% 
-  filter(value == 0) %>% 
-  pull(name)
-
-double_check_me %>% 
-  select(-all_of(drop_no_variance_columns)) %>% 
-  unnest(cols = c(alter_data)) %>% 
-  openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_{lubridate::today()}_batch3.xlsx"),
+if (nrow(double_check_me) > 0) {
+  # download double check file if need be for exploration in excel
+  drop_no_variance_columns <- double_check_me %>%
+    ungroup() %>% 
+    summarize(across(starts_with('flag_'), sum)) %>% 
+    pivot_longer(cols = everything()) %>% 
+    filter(value == 0) %>% 
+    pull(name)
+  
+  double_check_me %>% 
+    select(-all_of(drop_no_variance_columns)) %>% 
+    unnest(cols = c(alter_data)) %>% view()
+  openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_{lubridate::today()}_batch{batch}.xlsx"),
                        overwrite = TRUE)
+}
+
 
 
 
