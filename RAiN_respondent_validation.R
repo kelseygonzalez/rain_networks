@@ -25,7 +25,9 @@ memory.limit(30000000)     # this is needed on some PCs to increase memory allow
 ## load up the packages we will need: 
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(glue, tidyverse, here, naniar, rIP)
+pacman::p_load(glue, tidyverse, here, naniar, rIP, devtools)
+install_github("ip2location/ip2proxy-r")
+
 
 ## ---------------------------
 
@@ -281,15 +283,32 @@ validation %>%
 
 # Check IPs -------------------------------------------------------------
 
-# Ressources
+### Ressources
 # https://cran.r-project.org/web/packages/rIP/rIP.pdf
 # https://github.com/ip2location/ip2proxy-r
 # https://lite.ip2location.com/ip2proxy-lite
 
-
-# Prepare data
+### Prepare data
 
 IPcheck_data <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv")) %>% select(ResponseId, MID, IPAddress) %>% as.data.frame()
+
+
+
+### Using rIP package ---Currently not working. No idea why at this point
+
+# Our ip hub key
+
+sicss_iphub_key <- "MTYxMzA6RHg2MEh5NVBJTkRVSDgwQXNqS2FVaGJHSEh6Y0liVzQ="
+
+# Assess IP addresses
+IPcheck_output <- IPcheck_data %>% select(IPAddress) %>%
+  getIPinfo(i = "IPAddress",
+            iphub_key = sicss_iphub_key)
+
+IPcheck_output <- IPcheck_output %>% as_tibble()
+
+write_rds(IPcheck_output, file = glue("data/IPaddress_check_{lubridate::today()}.rds"))
+
 
 # Get Reject data to use for facet_wrap
 
@@ -299,14 +318,7 @@ mturk_batches <- read_csv('data/Batch_1_results.csv') %>%
   bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3)) %>% 
   filter(AssignmentStatus == "Rejected")
 
-# Our ip hub key
 
-sicss_iphub_key <- "MTYxMzA6RHg2MEh5NVBJTkRVSDgwQXNqS2FVaGJHSEh6Y0liVzQ="
-
-# Assess IP addresses
-IPcheck_data %>% select(IPAddress) %>%
-getIPinfo(i = "IPAddress",
-          iphub_key = sicss_iphub_key)
 
 
 

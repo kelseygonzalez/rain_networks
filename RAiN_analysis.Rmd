@@ -337,6 +337,12 @@ clean_data_completeAlterdata
 # test$nTiesAct_impFam[purrr::is_empty(test$nTiesAct_impFam)] <- NA
 # test$nTiesAct_impFam <- unlist(test$nTiesAct_impFam)
 
+# clean_data_completeAlterdata %>%
+#     mutate(nTiesAct = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., alter_name))),
+#            nTiesAct_impFam = as_vector(map(.[,44] %>% pull(), get_nImpTie.fun, "family")),
+#            nTiesAct_impNonFam = as_vector(map(.[,44] %>% pull(), get_nImpTie.fun, "person"))) %>%
+#     select(ResponseId, MID, nTiesAct, nTiesAct_impFam, nTiesAct_impNonFam)
+
 
 ### Define helper function
 
@@ -354,11 +360,7 @@ clean_data_completeAlterdata %>%
     select(ResponseId, MID, nTiesAct, nTiesAct_impFam, nTiesAct_impNonFam)
 
 
-clean_data_completeAlterdata %>%
-    mutate(nTiesAct = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., alter_name))),
-           nTiesAct_impFam = as_vector(map(.[,44] %>% pull(), get_nImpTie.fun, "family")),
-           nTiesAct_impNonFam = as_vector(map(.[,44] %>% pull(), get_nImpTie.fun, "person"))) %>%
-    select(ResponseId, MID, nTiesAct, nTiesAct_impFam, nTiesAct_impNonFam)
+
 
 
 
