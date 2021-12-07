@@ -37,6 +37,10 @@ files_filtered <- filter(files, grepl("rds", row.names(files))) %>% filter(grepl
 
 clean_data <- readRDS(rownames(files_filtered)[order(rownames(files_filtered))][nrow(files_filtered)])
 
+### Create data with complete alter data ###
+clean_data_completeAlterdata <- clean_data %>% 
+    drop_na(alter_data)
+
 ##### Remove Rejected Data #####
 mturk_batches <- read_csv('data/Batch_1_results.csv') %>% 
   mutate(batch = 1) %>% 
@@ -83,8 +87,8 @@ main_theme_noMargin_smallFont <- theme_light() +
 * Check Small stuff for angles  
   
 * Change SES of origin in demo & SES descriptives to highest degree between two parents   
-* Cahnge histograms to percent  
-* Fix issue with code for act_instancesEmo: For two respondents return is -Inf  
+* Change histograms to percent  
+* Fix issue with code for `act_instancesEmo`: For two respondents output is `-Inf`  
 * Income descr plot: NAs are not displayed  
 * Rate of match: Activation ties v. "important ties"
 * Differences in tie numbers: age, gender, race, education, income  
@@ -96,7 +100,11 @@ main_theme_noMargin_smallFont <- theme_light() +
 ### Descriptive statistics
 
 ## Demographics and SES
-
+  
+  
+The plots show that our sample scews young, male, white, highly educated, and above-average income (I think?). Almost all respondents said they were employed full time. In terms of parents' level of education, too, the sample scews highly educated. I wonder if we will be able to get enough obs in all cells in order to run post-stratification. Especially race seems to be problematic.
+  
+  
 ```{r descriptives_demoSES, echo = FALSE, message = FALSE, warning = FALSE}
 
 # Age: desnity plot
@@ -141,7 +149,7 @@ employm_descrPlot <- clean_data %>%
     main_theme_noMargin_smallFont +
     coord_flip()
 
-# Mother's education: Bar plot
+# Education: Bar plot
 
 parentEduc_descrPlot <- clean_data %>%
   select(father_ed, mother_ed) %>%
@@ -192,6 +200,8 @@ The plots show that we have what I believe to be a data quality problem: Many pe
 
 # clean_data$important_people[[1]] %>% select(important_alter_name) %>% bind_rows(clean_data$alter_data[[1]] %>% select(alter_name)) %>% mutate(alter_name = ifelse(is.na(alter_name), important_alter_name, alter_name)) %>% select(alter_name) %>% distinct() %>% nrow()
 
+# try n_distinct
+
 get_nTiesTotal.fun <- function(x, y) {
 x %>% select(important_alter_name) %>% bind_rows(y %>% select(alter_name)) %>% mutate(alter_name = ifelse(is.na(alter_name), important_alter_name, alter_name)) %>% select(alter_name) %>% distinct() %>% nrow()
 }
@@ -202,8 +212,7 @@ x %>% select(important_alter_name) %>% bind_rows(y %>% select(alter_name)) %>% m
 
 # mutate(nTiesAct = clean_data %>% drop_na(alter_data) %>% .[,44] %>% pull() %>% map_dbl(nrow(distinct(., alter_name))))
 
-nTiesAct_descriptives <- clean_data %>% 
-    drop_na(alter_data) %>%
+nTiesAct_descriptives <- clean_data_completeAlterdata %>%
     mutate(nTiesAct = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., alter_name)))) %>% 
     select(ResponseId, MID, nTiesAct)
          
@@ -214,8 +223,7 @@ nTiesImp_descriptives <- clean_data %>%
     select(ResponseId, MID, nTiesImpFamily, nTiesImpNonFamily)
 
 
-nTiesTotal_descriptives <- clean_data %>% 
-    drop_na(alter_data) %>%
+nTiesTotal_descriptives <- clean_data_completeAlterdata %>%
     drop_na(important_people) %>%
     mutate(nTiesTotal = map2_dbl(.[,43] %>% pull(), .[,44] %>% pull(), get_nTiesTotal.fun)) %>%
     select(ResponseId, MID, nTiesTotal)
@@ -242,8 +250,7 @@ nTies_descriptives %>%
 
 ### Activation instances
 # Generate data
-nActivation_descriptives <- clean_data %>%
-  drop_na(alter_data) %>%
+nActivation_descriptives <- clean_data_completeAlterdata %>%
   mutate(act_instancesTotal = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., activation_instance_example))),
          act_instancesEmo = map(.[,44] %>% pull(), filter, activation_type == "emo") %>% map(select, activation_instance) %>% map_dbl(max),
          act_instancesInfo = map(.[,44] %>% pull(), filter, activation_type == "Info") %>% map(select, activation_instance) %>% map_dbl(max),
@@ -267,7 +274,8 @@ nActivation_descriptives %>%
   
   
   
-Here's the plots with all respondents nTiesAct == 27 filtered out.
+Here's the plots with all respondents nTiesAct == 27 filtered out. Looking at the distributions of `nTiesAct` and `nTiesTotal`, to me this looks more realistic. Still, it's probably better to use a filter based on more than one of our flags. For instance, the IP address check, as well as others.  
+  
   
   
 ```{r descriptives_networks_filtered, echo = FALSE, message = FALSE, warning = FALSE}
@@ -291,8 +299,7 @@ clean_data %>%
 
 ### Number of activation instances
 
-clean_data %>%
-  drop_na(alter_data) %>%
+clean_data_completeAlterdata
   left_join(nTiesAct_descriptives) %>%
   filter(nTiesAct < 27) %>%
   mutate(act_instancesTotal = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., activation_instance_example))),
@@ -314,4 +321,49 @@ clean_data %>%
 
 
 
+```{r match_actTies_impTies, echo = FALSE, message = FALSE, warning = FALSE}
+
+### Code snippets
+# clean_data$alter_data[[1]] %>% filter(alter_name %in% (clean_data$important_people[[1]] %>% pull(important_alter_name)))
+
+# clean_data$alter_data[[1]] %>% distinct(alter_name, .keep_all = TRUE) %>% count(important_alter_type) %>% filter(important_alter_type == "family") %>% pull(n)
+
+# test <- clean_data_completeAlterdata %>%
+#   mutate(data = map(alter_data, 
+#     ~mutate(.x,
+#             important_alter_type = as_factor(important_alter_type))
+#   ))
+
+# test$nTiesAct_impFam[purrr::is_empty(test$nTiesAct_impFam)] <- NA
+# test$nTiesAct_impFam <- unlist(test$nTiesAct_impFam)
+
+
+### Define helper function
+
+get_nImpTie.fun <- function(data, tie) {
+data %>% distinct(alter_name, .keep_all = TRUE) %>% count(important_alter_type, .drop = FALSE) %>% filter(important_alter_type == tie) %>% pull(n)
+}
+
+
+### Create variables
+
+clean_data_completeAlterdata %>% 
+    mutate(nTiesAct = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., alter_name))),
+           nTiesAct_impFam = map(.[,44] %>% pull(), get_nImpTie.fun, "family"),
+           nTiesAct_impNonFam = map(.[,44] %>% pull(), get_nImpTie.fun, "person")) %>%
+    select(ResponseId, MID, nTiesAct, nTiesAct_impFam, nTiesAct_impNonFam)
+
+
+clean_data_completeAlterdata %>%
+    mutate(nTiesAct = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., alter_name))),
+           nTiesAct_impFam = as_vector(map(.[,44] %>% pull(), get_nImpTie.fun, "family")),
+           nTiesAct_impNonFam = as_vector(map(.[,44] %>% pull(), get_nImpTie.fun, "person"))) %>%
+    select(ResponseId, MID, nTiesAct, nTiesAct_impFam, nTiesAct_impNonFam)
+
+
+
+
+
+
+```
 
