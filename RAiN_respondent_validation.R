@@ -25,8 +25,8 @@ memory.limit(30000000)     # this is needed on some PCs to increase memory allow
 ## load up the packages we will need: 
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(glue, tidyverse, here, naniar, rIP, devtools)
-install_github("ip2location/ip2proxy-r")
+pacman::p_load(glue, tidyverse, here, naniar, rIP, excluder)
+# install_github("ip2location/ip2proxy-r")
 
 
 ## ---------------------------
@@ -41,6 +41,9 @@ batch <- 3
 
 # load data
 
+# Raw data for IP & location checks
+IPcheck_data_raw <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv"))
+
 # cleaned data after running "RAiN_data_cleaning.R"
 clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
 # the csv from mturk which you use to mark who gets paid and who doesn't
@@ -53,6 +56,12 @@ hit_already_completed <- read_csv('data/HID_already_paid.csv')
 
 already_paid_MID <- hit_already_completed %>% pull(hit_already_completed)
 
+# Batch reject data
+
+mturk_batches <- read_csv('data/Batch_1_results.csv') %>% 
+  mutate(batch = 1) %>% 
+  bind_rows(mutate(read_csv('data/Batch_2_results.csv'), batch = 2)) %>% 
+  bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3))
 
 
 # check data quality ------------------------------------------------------
@@ -129,11 +138,14 @@ validation <- clean %>%
                                           is.na(LocationLongitude),1, 0),
          flag_duplicate_catch_incorrect = ifelse(alters_incorrect_duplicate_catch > 0,
                                                  1, 0),
-         flag_survey_taken_twice = ifelse(survey_taken_n > 1, 1, 0)) %>% 
+         flag_survey_taken_twice = ifelse(survey_taken_n > 1, 1, 0),
+         flag_duplicateIP = ifelse(IPcheck_data_raw %>% mark_duplicates(dupl_location = FALSE) == "", 0, 1),
+         flag_IPnonUS = ifelse(IPcheck_data_raw %>% mark_ip(country = "US") == "", 0, 1),
+         flag_locNonUS = ifelse(IPcheck_data_raw %>% mark_location() == "", 0, 1)) %>% 
   # add up flags
   rowwise() %>% 
-  mutate(total_flags =  sum(c_across(starts_with("flag_")), na.rm = T)) %>% 
-  select(MID,HITId, ResponseId, starts_with("flag_"), total_flags)
+  mutate(total_flags = sum(c_across(starts_with("flag_")), na.rm = T)) %>% 
+  select(MID, HITId, ResponseId, starts_with("flag_"), total_flags)
 
 
 
@@ -283,25 +295,17 @@ validation %>%
 
 # Check IPs -------------------------------------------------------------
 
-### Ressources
-# https://cran.r-project.org/web/packages/rIP/rIP.pdf
-# https://github.com/ip2location/ip2proxy-r
-# https://lite.ip2location.com/ip2proxy-lite
-
-### Prepare data
-
-IPcheck_data <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv")) %>% select(ResponseId, MID, IPAddress) %>% as.data.frame()
-
-
-
 ### Using rIP package ---Currently not working. No idea why at this point
 
 # Our ip hub key
 
 sicss_iphub_key <- "MTYxMzA6RHg2MEh5NVBJTkRVSDgwQXNqS2FVaGJHSEh6Y0liVzQ="
 
-# Assess IP addresses
-IPcheck_output <- IPcheck_data %>% select(IPAddress) %>%
+
+# Get IP addresses assessment from IPHub
+IPcheck_output <- IPcheck_data_raw %>% 
+  select(ResponseId, MID, IPAddress) %>% 
+  as.data.frame() %>% 
   getIPinfo(i = "IPAddress",
             iphub_key = sicss_iphub_key)
 
@@ -309,14 +313,30 @@ IPcheck_output <- IPcheck_output %>% as_tibble()
 
 write_rds(IPcheck_output, file = glue("data/IPaddress_check_{lubridate::today()}.rds"))
 
+# Analyze data
 
+IPcheck_output %>% summarize(
+  percent_nonUS = sum(IP_Hub_nonUSIP) / n(),
+  percent_VPS = sum(IP_Hub_VPS) / n(),
+  percent_blockRec = sum(IP_Hub_recommend_block) / n()
+)
+
+
+### Using excluder package
+
+# I think the duplicate location function is not as helpful, so for now I didn't include it here.
+
+IPcheck_data_raw %>% summarize(
+  perc_duplicateIP = IPcheck_data_raw %>% check_duplicates(dupl_location = FALSE) %>% nrow() / nrow(IPcheck_data_raw),
+  perc_IPnonUS = IPcheck_data_raw %>% check_ip(country = "US") %>% nrow() / nrow(IPcheck_data_raw),
+  perc_locNonUS = IPcheck_data_raw %>% check_location() %>% nrow() / nrow(IPcheck_data_raw)
+)
+
+
+### Analysis by rejected/accepted
 # Get Reject data to use for facet_wrap
 
-mturk_batches <- read_csv('data/Batch_1_results.csv') %>% 
-  mutate(batch = 1) %>% 
-  bind_rows(mutate(read_csv('data/Batch_2_results.csv'), batch = 2)) %>% 
-  bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3)) %>% 
-  filter(AssignmentStatus == "Rejected")
+
 
 
 
