@@ -41,6 +41,9 @@ batch <- 3
 
 # load data
 
+# Raw data for IP & location checks
+IPcheck_data_raw <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv"))
+
 # cleaned data after running "RAiN_data_cleaning.R"
 clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
 # the csv from mturk which you use to mark who gets paid and who doesn't
@@ -333,8 +336,7 @@ IPcheck_output %>% summarize(
 clean %>% summarize(
   perc_duplicateIP = IPcheck_data_raw %>% check_duplicates(dupl_location = FALSE) %>% nrow() / nrow(IPcheck_data_raw),
   perc_IPnonUS = IPcheck_data_raw %>% check_ip(country = "US") %>% nrow() / nrow(IPcheck_data_raw),
-  perc_locNonUS = IPcheck_data_raw %>% check_location() %>% nrow() / nrow(IPcheck_data_raw)
-)
+  perc_locNonUS = IPcheck_data_raw %>% check_location() %>% nrow() / nrow(IPcheck_data_raw)) 
 
 ### Analysis by rejected/accepted
 # Get Reject data to use for facet_wrap
