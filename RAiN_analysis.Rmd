@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ##### Load packages #####
 
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load(tidyverse, glue, extrafont, cowplot)
+pacman::p_load(tidyverse, glue, extrafont, cowplot, excluder)
 
 
 ##### Set version ##### I think we don't need this bit here
@@ -31,25 +31,38 @@ setwd(Paths[Sys.info()[7]])
 
 ##### Load data #####
 
+### Load main data ###
 files <- file.info(list.files("data/", full.names = TRUE))
-
 files_filtered <- filter(files, grepl("rds", row.names(files))) %>% filter(grepl("fullsurvey", row.names(.)))
-
 clean_data <- readRDS(rownames(files_filtered)[order(rownames(files_filtered))][nrow(files_filtered)])
 
-### Create data with complete alter data ###
-clean_data_completeAlterdata <- clean_data %>% 
-    drop_na(alter_data)
-
-##### Remove Rejected Data #####
+### Load Batch rejection data ###
 mturk_batches <- read_csv('data/Batch_1_results.csv') %>% 
   mutate(batch = 1) %>% 
   bind_rows(mutate(read_csv('data/Batch_2_results.csv'), batch = 2)) %>% 
   bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3)) %>% 
   filter(AssignmentStatus == "Rejected")
 
-clean_data <- clean_data %>% 
+### Load rIP output ###
+ip_files_filtered <- filter(files, grepl("rds", row.names(files))) %>% filter(grepl("IPaddress", row.names(.)))
+IPcheck_output <- readRDS(rownames(ip_files_filtered)[order(rownames(ip_files_filtered))][nrow(ip_files_filtered)])
+
+### Load raw Qualtrics data ###
+
+IPcheck_data_raw <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv"))
+
+
+### Remove Rejected Data ###
+
+clean_data_noRejects <- clean_data %>% 
   anti_join(mturk_batches, by= c("MID" = "WorkerId"))
+
+### Create data with complete alter data ###
+clean_data_completeAlterdata <- clean_data %>% 
+    drop_na(alter_data)
+
+clean_data_noRejects_completeAlterdata <- clean_data_noRejects %>% 
+    drop_na(alter_data)
 
 
 ##### Load fonts #####
@@ -86,6 +99,7 @@ main_theme_noMargin_smallFont <- theme_light() +
 
 * Check Small stuff for angles  
   
+* Add to data quality: by Batch, comparison excluded v. included
 * Change SES of origin in demo & SES descriptives to highest degree between two parents   
 * Change histograms to percent  
 * Fix issue with code for `act_instancesEmo`: For two respondents output is `-Inf`  
@@ -94,9 +108,96 @@ main_theme_noMargin_smallFont <- theme_light() +
 * Differences in tie numbers: age, gender, race, education, income  
 * Differences in activation instances: age, gender, race, SES  
 * Differences in rate of match: age, gender, race, SES  
+  
+  
+  
+  
+### Data quality
+  
+Overall, our analysis suggests that about 10% of our initial respondents were in fact not US residents.
+  
+  
+```{r data_quality, echo = FALSE, message = FALSE, warning = FALSE}
+
+# IPHub
+
+rIP <- IPcheck_output %>% 
+  summarize(
+    source = "rIP",
+    perc_nonUS = sum(IP_Hub_nonUSIP) / n(),
+    perc_VPS = sum(IP_Hub_VPS) / n(),
+    perc_blockRec = sum(IP_Hub_recommend_block) / n()) %>% 
+  pivot_longer(
+    contains("perc_"),
+    names_to = "statistic",
+    values_to = "value")
+
+# excluder
+
+excluder <- clean_data %>% 
+  summarize(
+    source = "excluder",
+    perc_duplicateIP = IPcheck_data_raw %>% check_duplicates(dupl_location = FALSE) %>% nrow() / nrow(IPcheck_data_raw),
+    perc_IPnonUS = IPcheck_data_raw %>% check_ip(country = "US") %>% nrow() / nrow(IPcheck_data_raw),
+    perc_locNonUS = IPcheck_data_raw %>% check_location() %>% nrow() / nrow(IPcheck_data_raw)) %>% 
+  pivot_longer(
+    contains("perc_"),
+    names_to = "statistic",
+    values_to = "value")
+
+# Bind
+
+full_IPcheck <- rIP %>% 
+  bind_rows(excluder)
+
+# Visualize
+
+full_IPcheck %>%
+  ggplot(aes(statistic, value, fill = source)) +
+  geom_col() +
+  main_theme_noMargin_smallFont +
+  facet_wrap(.~source) +
+  coord_flip()
+
+
+```
+  
+  
+It seems like the people with suspicious IP addresses are not the one's we reject because of bad data. The values from the three checks provided by the excluder package remain virtually the same after removing our rejects. Maybe there's an error in my data generating code in the setup chunk?
+  
+  
+```{r data_quality_noRejects, echo = FALSE, message = FALSE, warning = FALSE}
+
+clean_data_noRejects %>% 
+  summarize(
+    perc_duplicateIP = IPcheck_data_raw %>% check_duplicates(dupl_location = FALSE) %>% nrow() / nrow(IPcheck_data_raw),
+    perc_IPnonUS = IPcheck_data_raw %>% check_ip(country = "US") %>% nrow() / nrow(IPcheck_data_raw),
+    perc_locNonUS = IPcheck_data_raw %>% check_location() %>% nrow() / nrow(IPcheck_data_raw)) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "statistic",
+    values_to = "value") %>%
+  ggplot(aes(statistic, value, fill = statistic)) +
+    geom_col(show.legend = FALSE) +
+    main_theme_noMargin_smallFont +
+    coord_flip()
+
+
+read_csv('data/Batch_1_results.csv') %>% 
+    mutate(batch = 1) %>% 
+    bind_rows(mutate(read_csv('data/Batch_2_results.csv'), batch = 2)) %>% 
+    bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3)) %>%
+
+Fri Dec 03 18:50:18 PST 2021 Batch 1
+Sat Dec 04 17:04:18 PST 2021 Batch 2
 
 
 
+```
+    
+  
+  
+  
 ### Descriptive statistics
 
 ## Demographics and SES
@@ -108,20 +209,20 @@ The plots show that our sample scews young, male, white, highly educated, and ab
 ```{r descriptives_demoSES, echo = FALSE, message = FALSE, warning = FALSE}
 
 # Age: desnity plot
-age_descrPlot <- clean_data %>%
+age_descrPlot <- clean_data_noRejects %>%
   ggplot(aes(as.numeric(age))) +
     geom_density() +
     main_theme_noMargin_smallFont
 
 # Gender: Bar plot
-gender_descrPlot <- clean_data %>%
+gender_descrPlot <- clean_data_noRejects %>%
   ggplot(aes(gender, fill = gender)) +
     geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
     main_theme_noMargin_smallFont +
     coord_flip()
 
 # Race: Bar plot
-race_descrPlot <- clean_data %>%
+race_descrPlot <- clean_data_noRejects %>%
   mutate(race = ifelse(hispanic == "Yes", "White Hispanic", race)) %>%
   ggplot(aes(race, fill = race)) +
     geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
@@ -129,21 +230,21 @@ race_descrPlot <- clean_data %>%
     coord_flip()
 
 # Education: Bar plot
-educ_descrPlot <- clean_data %>%
+educ_descrPlot <- clean_data_noRejects %>%
   ggplot(aes(educ, fill = educ)) +
     geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
     main_theme_noMargin_smallFont +
     coord_flip()
 
 # Income: Bar plot
-income_descrPlot <- clean_data %>%
+income_descrPlot <- clean_data_noRejects %>%
   ggplot(aes(income, fill = income)) +
     geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
     main_theme_noMargin_smallFont +
     coord_flip()
 
 # Employment status: Bar plot
-employm_descrPlot <- clean_data %>%
+employm_descrPlot <- clean_data_noRejects %>%
   ggplot(aes(employment, fill = employment)) +
     geom_bar(aes(y = (..count..)/sum(..count..)), show.legend = FALSE) +
     main_theme_noMargin_smallFont +
@@ -151,7 +252,7 @@ employm_descrPlot <- clean_data %>%
 
 # Education: Bar plot
 
-parentEduc_descrPlot <- clean_data %>%
+parentEduc_descrPlot <- clean_data_noRejects %>%
   select(father_ed, mother_ed) %>%
   pivot_longer(everything(),
                names_to = "parent",
@@ -212,24 +313,24 @@ x %>% select(important_alter_name) %>% bind_rows(y %>% select(alter_name)) %>% m
 
 # mutate(nTiesAct = clean_data %>% drop_na(alter_data) %>% .[,44] %>% pull() %>% map_dbl(nrow(distinct(., alter_name))))
 
-nTiesAct_descriptives <- clean_data_completeAlterdata %>%
+nTiesAct_descriptives <- clean_data_noRejects_completeAlterdata %>%
     mutate(nTiesAct = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., alter_name)))) %>% 
     select(ResponseId, MID, nTiesAct)
          
-nTiesImp_descriptives <- clean_data %>% 
+nTiesImp_descriptives <- clean_data_noRejects %>% 
     drop_na(important_people) %>%
     mutate(nTiesImpFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[1,2]) %>% map_dfr(as_tibble, .name_repair = "universal") %>% pull(),
            nTiesImpNonFamily = map(.[,43] %>% pull(), ~.x %>% count(important_alter_type) %>% .[2,2]) %>% map_dfr(as_tibble, .name_repair = "universal") %>% pull()) %>%
     select(ResponseId, MID, nTiesImpFamily, nTiesImpNonFamily)
 
 
-nTiesTotal_descriptives <- clean_data_completeAlterdata %>%
+nTiesTotal_descriptives <- clean_data_noRejects_completeAlterdata %>%
     drop_na(important_people) %>%
     mutate(nTiesTotal = map2_dbl(.[,43] %>% pull(), .[,44] %>% pull(), get_nTiesTotal.fun)) %>%
     select(ResponseId, MID, nTiesTotal)
 
 
-nTies_descriptives <- clean_data %>%
+nTies_descriptives <- clean_data_noRejects %>%
   select(ResponseId, MID) %>%
   left_join(nTiesAct_descriptives) %>%
   left_join(nTiesImp_descriptives) %>%
@@ -250,7 +351,7 @@ nTies_descriptives %>%
 
 ### Activation instances
 # Generate data
-nActivation_descriptives <- clean_data_completeAlterdata %>%
+nActivation_descriptives <- clean_data_noRejects_completeAlterdata %>%
   mutate(act_instancesTotal = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., activation_instance_example))),
          act_instancesEmo = map(.[,44] %>% pull(), filter, activation_type == "emo") %>% map(select, activation_instance) %>% map_dbl(max),
          act_instancesInfo = map(.[,44] %>% pull(), filter, activation_type == "Info") %>% map(select, activation_instance) %>% map_dbl(max),
@@ -282,7 +383,7 @@ Here's the plots with all respondents nTiesAct == 27 filtered out. Looking at th
 
 ### Number of Ties
 
-clean_data %>%
+clean_data_noRejects %>%
   select(ResponseId, MID) %>%
   left_join(nTiesAct_descriptives) %>%
   left_join(nTiesImp_descriptives) %>%
@@ -299,7 +400,7 @@ clean_data %>%
 
 ### Number of activation instances
 
-clean_data_completeAlterdata
+clean_data_noRejects_completeAlterdata %>%
   left_join(nTiesAct_descriptives) %>%
   filter(nTiesAct < 27) %>%
   mutate(act_instancesTotal = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., activation_instance_example))),
@@ -353,7 +454,7 @@ data %>% distinct(alter_name, .keep_all = TRUE) %>% count(important_alter_type, 
 
 ### Create variables
 
-clean_data_completeAlterdata %>% 
+clean_data_noRejects_completeAlterdata %>% 
     mutate(nTiesAct = map_dbl(.[,44] %>% pull(), ~nrow(distinct(., alter_name))),
            nTiesAct_impFam = map(.[,44] %>% pull(), get_nImpTie.fun, "family"),
            nTiesAct_impNonFam = map(.[,44] %>% pull(), get_nImpTie.fun, "person")) %>%
