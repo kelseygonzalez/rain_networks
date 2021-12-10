@@ -35,30 +35,41 @@ pacman::p_load(glue, tidyverse, here, naniar, rIP, excluder)
 ## IMPORTANT OPTION ## 
 # version <- 'pretest'
 version <- 'fullsurvey'
-batch <- 3
+batch <- 4
 
 ## ---------------------------
 
 # load data
 
 # cleaned data after running "RAiN_data_cleaning.R"
-clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
+clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds")) %>% 
+  distinct()
 # the csv from mturk which you use to mark who gets paid and who doesn't
-mturk <- read_csv(glue('data/Batch_{batch}_results.csv'))
-# %>% 
-#   filter(is.na(ApprovalTime),
-#          is.na(RejectionTime))
-
-hit_already_completed <- read_csv('data/HID_already_paid.csv') 
-
-already_paid_MID <- hit_already_completed %>% pull(hit_already_completed)
+mturk <- read_csv(glue('data/Batch_{batch}_results.csv')) %>% 
+  filter(is.na(ApprovalTime),
+         is.na(RejectionTime))
+# the raw csv from qualtrics to check IP addresses
+IPcheck_data_raw <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv"))
 
 # Batch reject data
-
 mturk_batches <- read_csv('data/Batch_1_results.csv') %>% 
   mutate(batch = 1) %>% 
   bind_rows(mutate(read_csv('data/Batch_2_results.csv'), batch = 2)) %>% 
-  bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3))
+  bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3)) %>% 
+  bind_rows(mutate(read_csv('data/Batch_4_results.csv'), batch = 4))
+
+
+hit_already_completed <- read_csv('data/HID_already_paid.csv') 
+
+
+already_paid_MID <- mturk_batches %>% 
+  filter(!is.na(AcceptTime),
+         batch != batch) %>% 
+  select(hit_already_completed = WorkerId) %>% 
+  bind_rows(hit_already_completed) %>%  
+    distinct() %>% 
+    pull(hit_already_completed)
+   
 
 
 # check data quality ------------------------------------------------------
@@ -107,6 +118,17 @@ validation_alter_data <- clean %>%
          alters_incorrect_duplicate_catch) 
 
 
+IPchecks <- IPcheck_data_raw %>%
+  select(ResponseId, MID, IPAddress, LocationLatitude, LocationLongitude) %>% 
+  mark_ip(country = "US") %>%
+  mark_location() %>% 
+  select(ResponseId, MID, exclusion_ip, exclusion_location) %>%
+  mutate(across(starts_with("exclusion"),
+                ~if_else(. == "", 0, 1))) %>%
+  rename_with(~ paste0('flag_', .x), 
+              .cols = starts_with("exclusion")) 
+
+
 validation <- clean %>% 
   right_join(mturk, by = c("MID" = "WorkerId")) %>%
   naniar::add_prop_miss() %>% 
@@ -117,9 +139,8 @@ validation <- clean %>%
                   alters_perc_unique = 0,
                   alters_total_n = 0,
                   alters_incorrect_duplicate_catch = 1)) %>% 
-  
   # create flags
-  add_count(MID, ResponseId, name = 'survey_taken_n') %>% 
+  add_count(MID, name = 'survey_taken_n') %>% 
   mutate(
     flag_double_dipper = ifelse(MID %in% already_paid_MID & is.na(ApprovalTime), 3, 0),
          flag_wrong_survey_code = ifelse(is.na(code) | is.na(Answer.surveycode), 1, 0),
@@ -136,6 +157,9 @@ validation <- clean %>%
          flag_duplicate_catch_incorrect = ifelse(alters_incorrect_duplicate_catch > 0,
                                                  1, 0),
          flag_survey_taken_twice = ifelse(survey_taken_n > 1, 1, 0)) %>% 
+  # merge in IP check flags
+  left_join(IPchecks, by = c('MID', 'ResponseId')) %>%
+  
   # add up flags
   rowwise() %>% 
   mutate(total_flags = sum(c_across(starts_with("flag_")), na.rm = T)) %>% 
@@ -143,14 +167,6 @@ validation <- clean %>%
 
 
 
-  validation <- IPcheck_data_raw %>%
-  mark_duplicates(dupl_location = FALSE) %>%
-  mark_ip(country = "US") %>%
-  mark_location() %>% 
-  select(ResponseId, MID, exclusion_duplicates, exclusion_ip, exclusion_location) %>%
-  mutate(across(starts_with("exclusion"),
-                ~if_else(. == "", 0, 1))) %>%
-  right_join(validation)
 
 
 # select which cases to approve and disprove 
@@ -164,7 +180,11 @@ approved <- validation %>%
                               'R_ZC6RxDxU8SPsF57','R_3k1DfomFVRxumu8','R_33mAxizCzef41IC',
                               'R_2dfDkG90DQtHuKt', 'R_1LpB2HZXiCMaSgj', 'R_1P5FwixTbyLLFIV',
                               'R_11crdDcPZUQyzNM', 'R_2WPaszkg8Fmwy0s', 'R_2XamfBxCbfk6NN0',
-                              'R_didKpO3G5BFyqAN', 'R_1rJsN7Ch1zz6GRM'
+                              'R_didKpO3G5BFyqAN', 'R_1rJsN7Ch1zz6GRM', 'R_3ne0b6eknRMvcwM',
+                              'R_3fVR4vaCmHqZAkw','R_9pepRerpQqJH7DH','R_29vlqViSQD3IkVo',
+                              'R_RgnoFxfnWqnsSSR','R_1He5ArcQ7cAFwCp','R_3E9Cb4ykDK5SlF2',    
+                              'R_2PBxYMDWIcdUdp2'
+                              
            ))) %>% 
   select( MID, HITId) %>% 
   mutate(Approve = 'x',
@@ -196,12 +216,18 @@ rejected_poor_responses <- validation %>%
                            'R_22JkMYnT65EkKKY','R_SUBcWSdfRJ3CmRz','R_dbuZb1se6PeoEY9',
                            'R_3oXDbTGgYODrLe1','R_22WTSM8ttAacqN6','R_2vZVaibJm5x75VB',
                            'R_232iYcjen9VKWbU','R_1rvJWcHeOwHSdda','R_C1wJJzPk07zxq37',
-                           'R_2s5x19uXea58aLf', 'R_1JEDE3FF04AuJtc','R_1mpYM7AeRYyrI5M',
-                           'R_2t5TXRc2ISdKbNG','R_2VsTJwSoPzZwVnC', 'R_33pWl3aCQeHeYt3',
-                           'R_3DkzSCWx3qJCJ1W', 'R_3HYX6Nq9I6L8VGa','R_3njdLmJ0SAtlJ9c',
-                           'R_3oFoiNEKOsmbm34','R_psXpq49MovXdt2p', 'R_UsihLHKsArkwuJP',
-                           'R_VR1Ji08qzvfgqbf'
-                           )) %>% 
+                           'R_2s5x19uXea58aLf','R_1JEDE3FF04AuJtc','R_1mpYM7AeRYyrI5M',
+                           'R_2t5TXRc2ISdKbNG','R_2VsTJwSoPzZwVnC','R_33pWl3aCQeHeYt3',
+                           'R_3DkzSCWx3qJCJ1W','R_3HYX6Nq9I6L8VGa','R_3njdLmJ0SAtlJ9c',
+                           'R_3oFoiNEKOsmbm34','R_psXpq49MovXdt2p','R_UsihLHKsArkwuJP',
+                           'R_VR1Ji08qzvfgqbf','R_1IyjPBNND8U5rv4','R_1GZGkaGpriXZD7O',
+                           'R_2ZHTImvCET3vzpZ','R_2QXpeGuJNyEdLc3','R_1Cl7aMwUxKag8U8',
+                           'R_2TFa9CPViz69MxR','R_3paOzMAlVtd9qnO','R_3KYMgj9HfqEK5Gp',
+                           'R_24qim2ePxNUZ7kQ','R_20Vti2SmkLMkax5','R_VU54wwUgEUJvzoZ',
+                           'R_3j89aDn4ncNOv3E','R_ysu4HoZjyMZDzX3','R_12r7upefusjP2Bx',
+                           'R_3Q0p9v44xvrSFUv','R_C7duoWMcKXYBs5j','R_1H7clvQ4kRkGWR8',
+                           'R_1IxREhCt0Y2cAAD','R_3FWpBE3XCKdT2Av','R_10JLD279t4ZwgpI',
+                           'R_3oFtZdJqisNTD2y')) %>% 
   anti_join(approved, by = c("MID", "HITId")) %>% 
   mutate(Reject_d = 'x',
          RequesterFeedback_d = 'Rejected due to low response quality',
@@ -232,7 +258,7 @@ if (nrow(double_check_me) > 0) {
   
   double_check_me %>% 
     select(-all_of(drop_no_variance_columns)) %>% 
-    unnest(cols = c(alter_data)) %>% view()
+    unnest(cols = c(alter_data)) %>% 
   openxlsx::write.xlsx(file = glue("data/qualtrics_{version}_{lubridate::today()}_batch{batch}.xlsx"),
                        overwrite = TRUE)
 }
@@ -249,13 +275,14 @@ mturk_to_upload <- mturk %>%
   left_join(rejected_double_dip, by = c("WorkerId" = "MID",  'HITId' = 'HITId')) %>% 
   left_join(rejected_survey_not_taken, by = c("WorkerId" = "MID",  'HITId' = 'HITId'))  %>% 
   left_join(rejected_poor_responses, by = c("WorkerId" = "MID",  'HITId' = 'HITId'))  %>% 
-  mutate(RequesterFeedback = case_when(!is.na(RequesterFeedback_a) ~ RequesterFeedback_a,
+  mutate(across(starts_with('RequesterFeedback'), ~ ifelse(is.na(.x), NA_character_, .x)), 
+    RequesterFeedback = case_when(!is.na(RequesterFeedback_a) ~ RequesterFeedback_a,
                                        !is.na(RequesterFeedback_b) ~ RequesterFeedback_b,
                                        !is.na(RequesterFeedback_c) ~ RequesterFeedback_c,
                                        !is.na(RequesterFeedback_d) ~ RequesterFeedback_d),
-         Reject = case_when(!is.na(Reject_b) ~ Reject_b,
-                            !is.na(Reject_c) ~ Reject_c,
-                            !is.na(Reject_d) ~ Reject_d)) %>% 
+         Reject = case_when(!is.na(Reject_b) ~ RequesterFeedback_b,
+                            !is.na(Reject_c) ~ RequesterFeedback_c,
+                            !is.na(Reject_d) ~ RequesterFeedback_d)) %>% 
   select(HITId, HITTypeId,Title,                  
          Description, Keywords,Reward,
          CreationTime, MaxAssignments,RequesterAnnotation,
@@ -297,13 +324,32 @@ validation %>%
   write_csv(file = 'data/HID_already_paid.csv')
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Check IPs -------------------------------------------------------------
 
 ### Using rIP package ---Currently not working. No idea why at this point
 
 # Our ip hub key
-
-sicss_iphub_key <- "MTYxMzA6RHg2MEh5NVBJTkRVSDgwQXNqS2FVaGJHSEh6Y0liVzQ="
+sicss_iphub_key <- config$IP_Hub_key
 
 
 # Get IP addresses assessment from IPHub
@@ -338,11 +384,3 @@ clean %>% summarize(
 
 ### Analysis by rejected/accepted
 # Get Reject data to use for facet_wrap
-
-
-
-
-  
-
-
-
