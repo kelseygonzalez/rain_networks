@@ -44,6 +44,7 @@ batch <- 3
 # Raw data for IP & location checks
 IPcheck_data_raw <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv"))
 
+
 # cleaned data after running "RAiN_data_cleaning.R"
 clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"))
 # the csv from mturk which you use to mark who gets paid and who doesn't
@@ -138,15 +139,22 @@ validation <- clean %>%
                                           is.na(LocationLongitude),1, 0),
          flag_duplicate_catch_incorrect = ifelse(alters_incorrect_duplicate_catch > 0,
                                                  1, 0),
-         flag_survey_taken_twice = ifelse(survey_taken_n > 1, 1, 0),
-         flag_duplicateIP = ifelse(IPcheck_data_raw %>% mark_duplicates(dupl_location = FALSE) == "", 0, 1),
-         flag_IPnonUS = ifelse(IPcheck_data_raw %>% mark_ip(country = "US") == "", 0, 1),
-         flag_locNonUS = ifelse(IPcheck_data_raw %>% mark_location() == "", 0, 1)) %>% 
+         flag_survey_taken_twice = ifelse(survey_taken_n > 1, 1, 0)) %>% 
   # add up flags
   rowwise() %>% 
   mutate(total_flags = sum(c_across(starts_with("flag_")), na.rm = T)) %>% 
   select(MID, HITId, ResponseId, starts_with("flag_"), total_flags)
 
+
+
+  validation <- IPcheck_data_raw %>%
+  mark_duplicates(dupl_location = FALSE) %>%
+  mark_ip(country = "US") %>%
+  mark_location() %>% 
+  select(ResponseId, MID, exclusion_duplicates, exclusion_ip, exclusion_location) %>%
+  mutate(across(starts_with("exclusion"),
+                ~if_else(. == "", 0, 1))) %>%
+  right_join(validation)
 
 
 # select which cases to approve and disprove 
@@ -341,9 +349,14 @@ IPcheck_data_raw %>% summarize(
 
 
 
+clean %>%
+  mutate(
+    flag_duplicateIP = ifelse(IPcheck_data_raw %>% mark_duplicates(dupl_location = FALSE) == "duplicates", 1, 0)
+  ) %>%
+  select(flag_duplicateIP)
 
 
-
+  
 
 
 
