@@ -35,7 +35,7 @@ pacman::p_load(glue, tidyverse, here, naniar, rIP, excluder)
 ## IMPORTANT OPTION ## 
 # version <- 'pretest'
 version <- 'fullsurvey'
-batch <- 4
+batch <- 5
 
 ## ---------------------------
 
@@ -51,15 +51,15 @@ clean <- read_rds(glue("data/qualtrics_{version}_clean_{lubridate::today()}.rds"
 mturk <- read_csv(glue('data/Batch_{batch}_results.csv')) %>% 
   filter(is.na(ApprovalTime),
          is.na(RejectionTime))
-# the raw csv from qualtrics to check IP addresses
-IPcheck_data_raw <- read_csv(glue("data/qualtrics_{version}_raw_{lubridate::today()}.csv"))
 
 # Batch reject data
 mturk_batches <- read_csv('data/Batch_1_results.csv') %>% 
   mutate(batch = 1) %>% 
   bind_rows(mutate(read_csv('data/Batch_2_results.csv'), batch = 2)) %>% 
   bind_rows(mutate(read_csv('data/Batch_3_results.csv'), batch = 3)) %>% 
-  bind_rows(mutate(read_csv('data/Batch_4_results.csv'), batch = 4))
+  bind_rows(mutate(read_csv('data/Batch_4_results.csv'), batch = 4)) %>% 
+  bind_rows(mutate(read_csv('data/Batch_5_results.csv'), batch = 5))
+
 
 
 hit_already_completed <- read_csv('data/HID_already_paid.csv') 
@@ -82,6 +82,7 @@ already_paid_MID <- mturk_batches %>%
 
 validation_alter_data <- clean %>%
   drop_na(alter_data) %>% 
+  semi_join(mturk, by = c("MID" = "WorkerId")) %>% 
   mutate(total_activation_examples = 
            map_dbl(alter_data, ~ 
                      count(.x, activation_type, activation_instance) %>% 
@@ -122,6 +123,7 @@ validation_alter_data <- clean %>%
 
 
 IPchecks <- IPcheck_data_raw %>%
+  semi_join(mturk, by = c("MID" = "WorkerId")) %>% 
   select(ResponseId, MID, IPAddress, LocationLatitude, LocationLongitude) %>% 
   mark_ip(country = "US") %>%
   mark_location() %>% 
@@ -176,19 +178,19 @@ validation <- clean %>%
 # remember, only can upload to github with responseIDs NOT MIDs
 approved <- validation %>%
   filter((total_flags <= 2) |
-           (ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss', 'R_An9AnLvg0912tgZ', 'R_zVBrNzzC7lUCtPP', 
-                              'R_ZC6RxDxU8SPsF57', 'R_3nIBmsvGWsScy9C', 'R_2ANEmFg2ylBP3cL', 
-                              'R_2qELJ29qJwyJrb0','R_2zZLO18c3LMQ9ss','R_2U0iioWA0IEx0hW',
+           (ResponseId %in% c('R_3nIBmsvGWsScy9C','R_2zZLO18c3LMQ9ss','R_An9AnLvg0912tgZ', 
+                              'R_zVBrNzzC7lUCtPP','R_ZC6RxDxU8SPsF57','R_3nIBmsvGWsScy9C',
+                              'R_2ANEmFg2ylBP3cL','R_2qELJ29qJwyJrb0','R_2zZLO18c3LMQ9ss',
                               'R_w4wrdNM0WwZgB8t','R_1zdIOXjNtSxwReF','R_2Yh6JNqVCRqylWp',
                               'R_ZC6RxDxU8SPsF57','R_3k1DfomFVRxumu8','R_33mAxizCzef41IC',
-                              'R_2dfDkG90DQtHuKt', 'R_1LpB2HZXiCMaSgj', 'R_1P5FwixTbyLLFIV',
-                              'R_11crdDcPZUQyzNM', 'R_2WPaszkg8Fmwy0s', 'R_2XamfBxCbfk6NN0',
-                              'R_didKpO3G5BFyqAN', 'R_1rJsN7Ch1zz6GRM', 'R_3ne0b6eknRMvcwM',
+                              'R_2dfDkG90DQtHuKt','R_1LpB2HZXiCMaSgj','R_1P5FwixTbyLLFIV',
+                              'R_11crdDcPZUQyzNM','R_2WPaszkg8Fmwy0s','R_2XamfBxCbfk6NN0',
+                              'R_didKpO3G5BFyqAN','R_1rJsN7Ch1zz6GRM','R_3ne0b6eknRMvcwM',
                               'R_3fVR4vaCmHqZAkw','R_9pepRerpQqJH7DH','R_29vlqViSQD3IkVo',
                               'R_RgnoFxfnWqnsSSR','R_1He5ArcQ7cAFwCp','R_3E9Cb4ykDK5SlF2',    
-                              'R_2PBxYMDWIcdUdp2'
-                              
-           ))) %>% 
+                              'R_2PBxYMDWIcdUdp2','R_2U0iioWA0IEx0hW','R_2Cd1m93ymrCi9u0',
+                              'R_xtNzQugX5jyHnAR','R_2P683aI2ItaIzh6', 'R_25ZPT6jWfM41ZG6',
+                              'R_21bo1vd6URhhxvU'))) %>% 
   select( MID, HITId) %>% 
   mutate(Approve = 'x',
          RequesterFeedback_a = 'Approved')
@@ -230,7 +232,8 @@ rejected_poor_responses <- validation %>%
                            'R_3j89aDn4ncNOv3E','R_ysu4HoZjyMZDzX3','R_12r7upefusjP2Bx',
                            'R_3Q0p9v44xvrSFUv','R_C7duoWMcKXYBs5j','R_1H7clvQ4kRkGWR8',
                            'R_1IxREhCt0Y2cAAD','R_3FWpBE3XCKdT2Av','R_10JLD279t4ZwgpI',
-                           'R_3oFtZdJqisNTD2y')) %>% 
+                           'R_3oFtZdJqisNTD2y','R_r3fpTQK4Yf6fFw5','R_1Ntf5UE5KPBlUD8',
+                           'R_2Blptg2jT7fPcSP', 'R_BYsc70lraQd210J')) %>% 
   anti_join(approved, by = c("MID", "HITId")) %>% 
   mutate(Reject_d = 'x',
          RequesterFeedback_d = 'Rejected due to low response quality',
